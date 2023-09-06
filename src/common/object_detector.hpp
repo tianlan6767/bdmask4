@@ -22,17 +22,6 @@ namespace ObjectDetector
                 }
             }
     };
-
-    struct Obj_mask
-    {
-        float left, top, right, bottom, confidence;
-        int class_label;
-        cv::Mat mask;
-        Obj_mask() = default;
-
-        Obj_mask(float left, float top, float right, float bottom, float confidence, int class_label, cv::Mat mask)
-            : left(left), top(top), right(right), bottom(bottom), confidence(confidence), class_label(class_label) {}
-    };
     
     struct Defect
     {
@@ -41,6 +30,8 @@ namespace ObjectDetector
         vector<cv::Mat> masks{};
         vector<Obj> boxes{};
     };
+
+
 
     struct Base {
         static const int kWidth = 768;
@@ -59,8 +50,6 @@ namespace ObjectDetector
         std::vector<Obj> BoxArray;
         std::vector<Base> BasesArray;
     };
-
-    typedef std::vector<Obj_mask> MaskArray;
     
     typedef Result ResultArray;
 

@@ -63,12 +63,6 @@ namespace CUDAKernel{
         const uint8_t* y, const uint8_t* uv, int width, int height, 
         int linesize, uint8_t* dst, 
         cudaStream_t stream);
-    
-    void  filter_box_feat(float* output_array_ptr, float* box_feat_input_ptr, float* box_ouput_ptr, int keep_flag_boxes, int count, cudaStream_t stream);
-
-    void  filter_box_feat_sorted(float* output_array_ptr, float* box_feat_input_ptr, float* box_ouput_ptr, int32_t* keepflag_indexes, const int keep_flag_boxes, cudaStream_t stream);
-
-    void top_indexes(float* input, int32_t * output_indexes, const int max_boxes, const int keep_flag_boxes, cudaStream_t stream);
 };
 
 #endif // PREPROCESS_KERNEL_CUH

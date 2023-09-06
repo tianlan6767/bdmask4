@@ -269,9 +269,7 @@ namespace TRT {
 			auto dims = context->engine_->getBindingDimensions(i);
 			auto type = context->engine_->getBindingDataType(i);
 			const char* bindingName = context->engine_->getBindingName(i);
-            if (dims.d[0] == -1){
-                dims.d[0] = 50;
-            }
+			dims.d[0] = max_batchsize;
 			auto newTensor = make_shared<Tensor>(dims.nbDims, dims.d, convert_trt_datatype(type));
 			newTensor->set_stream(this->context_->stream_);
 			newTensor->set_workspace(this->workspace_);
@@ -321,23 +319,13 @@ namespace TRT {
 	}
 
 	void InferImpl::forward(bool sync) {
-        
+
 		EngineContext* context = (EngineContext*)context_.get();
-        int inputBatchSize = 1;
-        if (inputs_.size() > 1){
-            inputBatchSize = inputs_[1]->size(0);
-        }else{
-            inputBatchSize = inputs_[0]->size(0);
-        }
-		
+		int inputBatchSize = inputs_[0]->size(0);
 		for(int i = 0; i < context->engine_->getNbBindings(); ++i){
 			auto dims = context->engine_->getBindingDimensions(i);
 			auto type = context->engine_->getBindingDataType(i);
-            if (dims.d[0] == -1){
-                dims.d[0] = inputBatchSize;
-            }
-			
-
+			dims.d[0] = 1;
 			if(context->engine_->bindingIsInput(i)){
 				context->context_->setBindingDimensions(i, dims);
 			}
