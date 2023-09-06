@@ -833,5 +833,6 @@ namespace CUDAKernel{
         checkCudaRuntime(cudaFree(gpu_result));
         checkCudaRuntime(cudaFree(_1_pass_result));
         checkCudaRuntime(cudaFree(_1_pass_result_idxes));
+        
     }
 };

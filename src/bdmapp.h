@@ -14,4 +14,5 @@ public:
     ObjectDetector::MaskArray bdmapp(shared_ptr<Bdm::Infer> bdm, 
                                   cv::Mat& image);
 
+
 };
