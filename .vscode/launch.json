@@ -1,0 +1,60 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "program-debug",
+            "type": "cppdbg",
+            "request": "launch",
+            // "request": "attach",
+            // "executable": "./bin/executable",
+            // "target": "4285",
+            "program": "${workspaceFolder}/workspace/pro",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/workspace",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/lib64:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/py38:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/cpp-packages/opencv4.2/lib:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/lib:$LD_LIBRARY_PATH"
+                },
+                {
+                    "name": "CUDA_LAUNCH_BLOCKING",
+                    "value": "1"
+                }
+            ],
+            // "setupCommands": [
+            //     {
+            //         "text": "-enable-pretty-printing",
+            //         "ignoreFailures": false
+            //     }
+            // ],
+            "preLaunchTask": "build",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Valgrind as the debugger",
+                    "text": "set substitute-path /build/glibc-OTsEL5/glibc-2.31/nptl /usr/lib/x86_64-linux-gnu/nptl",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set the path to the Valgrind executable",
+                    "text": "set substitute-path /usr/lib/valgrind /usr/bin",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Start Valgrind with the memcheck tool",
+                    "text": "set args --tool=memcheck",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
