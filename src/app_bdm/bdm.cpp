@@ -202,6 +202,11 @@ namespace Bdm{
 
 
             affin_matrix_device.set_stream(stream_);
+            output_array_device.set_stream(stream_);
+            box_feat_input_device.set_stream(stream_);
+            box_output_device.set_stream(stream_);
+            feature_output_device.set_stream(stream_);
+            keepflag_indexes.set_stream(stream_);
 
             // 这里8个值的目的是保证 8 * sizeof(float) % 32 == 0
             affin_matrix_device.resize(max_batch_size, 8).to_gpu();
@@ -231,43 +236,50 @@ namespace Bdm{
                     input->copy_from_gpu(input->offset(ibatch), mono->gpu(), mono->count());
                     job.mono_tensor->release();
                 }
-
                 fcos_engine->forward(false);
                 output_array_device.to_gpu(false);
                 
+
                 // 进行框处理和NMS计算
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job                 = fetch_jobs[ibatch];
                     float* image_pred_output = output->gpu<float>(ibatch);
+
                     float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
                     auto affine_matrix        = affin_matrix_device.gpu<float>(ibatch);
-                    checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(float)*max_batch_size*(1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT), stream_));
-   
+                    checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(float), stream_));
                     decode_kernel_invoker(image_pred_output, output->size(1), num_classes, confidence_threshold_, affine_matrix, output_array_ptr, MAX_IMAGE_BBOX, stream_);
-
                     if(nms_method_ == NMSMethod::FastGPU){
                         nms_kernel_invoker(output_array_ptr, nms_threshold_, MAX_IMAGE_BBOX, stream_);
                     }
+                    output_array_device.save_to_file("./mask_data/output_array_device_" + to_string(num));
+                    num++;
                 }
-                output_array_device.save_to_file("./mask_data/tdata/out_array_" + to_string(num));
-                num++;
 
                 // mask推理
-                // box_output_device.to_gpu(false);
-                // box_feat_input_device.to_gpu(false);
-                // feature_output_device.to_gpu(false);
-                // keepflag_indexes.to_gpu(false);
+                box_output_device.to_gpu(false);
+                box_feat_input_device.to_gpu(false);
+                feature_output_device.to_gpu(false);
+                keepflag_indexes.to_gpu(false);
                 
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     
+                    // float* output_parray = output_array_device.cpu<float>(ibatch);
+                    // int NMS_boxs_count     = min(MAX_IMAGE_BBOX, (int)*output_parray); 
+
                     float* box_feat_input_ptr = box_feat_input_device.gpu<float>(ibatch);
                     float* box_output_ptr = box_output_device.gpu<float>(ibatch);
-                    uint8_t* feature_output_ptr = feature_output_device.gpu<uint8_t>(ibatch);
-                    int32_t* keepflag_indexes_ptr = keepflag_indexes.gpu<int32_t>(ibatch);
 
+                    // int32_t* keepflag_indexes_cpu = keepflag_indexes.cpu<int32_t>(ibatch);
+                    // memset(keepflag_indexes_cpu, -1, MAX_KEEPFLAG*sizeof(int32_t));
                     checkCudaRuntime(cudaMemsetAsync(box_feat_input_ptr, 0, sizeof(float), stream_));
                     checkCudaRuntime(cudaMemsetAsync(box_output_ptr, 0, sizeof(float), stream_));
+                    
+                    uint8_t* feature_output_ptr = feature_output_device.gpu<uint8_t>(ibatch);
                     checkCudaRuntime(cudaMemsetAsync(feature_output_ptr, 0, sizeof(uint8_t), stream_));
+
+
+                    int32_t* keepflag_indexes_ptr = keepflag_indexes.gpu<int32_t>(ibatch);
                     checkCudaRuntime(cudaMemsetAsync(keepflag_indexes_ptr, -1, sizeof(uint8_t), stream_));
 
                     float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
@@ -279,7 +291,30 @@ namespace Bdm{
                     int keep_box_counts  = min(MAX_KEEPFLAG, (int)*box_output_parray);
                     int32_t* keepflag_indexes_cpu = keepflag_indexes.cpu<int32_t>(ibatch);
                     
+
+                    for(int j=0; j < keep_box_counts; j++){
+                        printf("top%d---索引值:%d\n",j+1, keepflag_indexes_cpu[j]);
+                    }
+                    // output_array_device.save_to_file("./mask_data/output_array_device_" + to_string(NMS_boxs_count));
+                    printf("当前出现的%d个缺陷", keep_box_counts);
+
+                    // 
                     if (keep_box_counts > 0){
+
+                        // 筛选出只保留keepflag=1的框并输出box_feat 和 box属性
+                        //  float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
+                        // CUDAKernel::filter_box_feat(output_array_ptr, box_feat_input_ptr, box_output_ptr, MAX_KEEPFLAG, NMS_boxs_count, stream_);
+                        // float* box_output_parray = box_output_device.cpu<float>(ibatch);
+                        // int keep_box_counts  = min(MAX_KEEPFLAG, (int)*box_output_parray);
+
+
+                        // CPU---topk;
+                        // cpu_topk(output_parray, keepflag_indexes_cpu, MAX_IMAGE_BBOX, MAX_KEEPFLAG);
+
+                        
+                        // int keep_box_counts = count_if(keepflag_indexes_cpu, keepflag_indexes_cpu+MAX_KEEPFLAG, [](int x){return x >= 0;});
+                        // memset(output_parray, 0, max_batch_size*(1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT)*sizeof(float));
+
 
                         size_t size_image_feature =   iLogger::upbound(mask_input_width_*mask_input_height_ * 4 , 32);
                         size_t size_box_feat     =  iLogger::upbound(mask_box_feat_element_, 32);  
@@ -290,17 +325,25 @@ namespace Bdm{
                         base_input->copy_from_gpu(base_input->offset(ibatch), bases_out->gpu<float>(ibatch), size_image_feature);
                         box_feat_input->copy_from_gpu(box_feat_input->offset(ibatch), box_feat_input_device.gpu<float>(ibatch), keep_box_counts*mask_box_feat_element_);
 
+                        // base_input->save_to_file("./mask_data/base_data_" + to_string(NMS_boxs_count) + "_" + to_string(keep_box_counts));
+                        // box_feat_input->save_to_file("./mask_data/box_feat" + to_string(NMS_boxs_count) + "_" + to_string(keep_box_counts));
+
+                        
                         mask_engine->forward(false);
+                       
+
                         feature_output_device.to_gpu(false);
                         float* mask_ptr = mask_output->gpu<float>(ibatch);
 
                         // mask阈值过滤
                         CUDAKernel::threshold_feature_mat(mask_ptr, feature_output_ptr, keep_box_counts, mask_feature_height_, mask_feature_width_, 0.5f, stream_);
                     }
+                     
                 }
                 
                 // 后处理保存图片
                 box_output_device.to_cpu();
+                // output_array_device.to_cpu(true);
                 
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     
@@ -309,6 +352,13 @@ namespace Bdm{
                     uint8_t* feature_output_ptr = feature_output_device.gpu<uint8_t>(ibatch);
                     float* box_output_parray = box_output_device.cpu<float>(ibatch);   
                     int keep_box_counts  = min(MAX_KEEPFLAG, (int)*box_output_parray);
+
+
+                    // for(int i = 0; i < keep_box_counts; ++i){
+                    //     Mat mask = Mat::zeros(mask_feature_height_, mask_feature_height_, CV_8UC1);
+                    //     cudaMemcpy(mask.data, feature_output_ptr + i * mask_feature_height_ * mask_feature_width_*sizeof(uint8_t), sizeof(uint8_t)* mask_feature_height_* mask_feature_width_, cudaMemcpyDeviceToHost);
+                    //     cv::imwrite("./mask_data/tres/mask_" + to_string(keep_box_counts) + "_" +to_string(i) + ".jpg", mask);
+                    // }
                            
                     for(int i = 0; i < keep_box_counts; ++i){
                         Obj_mask obj_mask;
@@ -386,7 +436,7 @@ namespace Bdm{
             );
 
             
-            // tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdmask/workspace/inf/1.jpg");
+            tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdmask/workspace/inf/1.jpg");
 
             return true;
         }

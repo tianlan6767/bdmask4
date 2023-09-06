@@ -23,14 +23,14 @@ static const char* cocolabels[] = {
 
 int main(){
 
-    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/OQC/model_0545999/model_0545999.trt)";
+    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/OQC/25cls/b1/model-FCOS-OQC-FP16.trtmodel)";
     string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/OQC/boxfeat/model_blender-oqc-dy-boxfeat--fp16)";
 
 
     BdmApp bdmapp;
     shared_ptr<Bdm::Infer> bdm = nullptr;
     // shared_ptr<Bdm::Infer> bdm = nullptr;
-    int device_id1 = 2;
+    int device_id1 = 0;
 
     float mean[] = {59.406};
     float std[] = {59.32};
@@ -43,7 +43,7 @@ int main(){
     // bdm.reset();
     
     if(bdm != nullptr){
-        string src = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/mask_data/images/used/*.jpg)";
+        string src = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/OQC/imgs222/used/*.jpg)";
     
         // string src = R"(/media/ps/data/train/LQ/project/OQC/train/0001/go/train/*.jpg)";
         string dst = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/mask_data/tinf)";
@@ -57,7 +57,7 @@ int main(){
 
         assert(result1);
         int num_imp = 1;
-        int noc = 10;
+        int noc = 1;
         while(noc){
             for(int im_idx=0; im_idx < files.size(); ++im_idx){
                 cv::Mat image = cv::imread(files[im_idx], 0);

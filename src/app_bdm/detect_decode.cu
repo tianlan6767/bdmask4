@@ -31,10 +31,9 @@ namespace Bdm{
                 label      = i;
             }
         }
-        
-        // confidence = objectness;
-        // if(confidence < confidence_threshold)
-        //     return;
+        confidence = objectness;
+        if(confidence < confidence_threshold)
+            return;
         int index = atomicAdd(parray, 1);
         if(index >= max_objects)
             return;
@@ -45,23 +44,17 @@ namespace Bdm{
         affine_project(invert_affine_matrix, left,  top,    &left,  &top);
         affine_project(invert_affine_matrix, right, bottom, &right, &bottom);
         float* pout_item = parray + 1 + index * NUM_BOX_ELEMENT;
-        // __syncthreads();
-        // printf("修改前:%f--%f--%f--%f--%f\n", pout_item[0], pout_item[1], pout_item[2], pout_item[3], pout_item[4], pout_item[5], pout_item[6]);
-        // __syncthreads();
-
-        pout_item[0] = left;
-        pout_item[1] = top;
-        pout_item[2] = right;
-        pout_item[3] = bottom;
-        pout_item[4] = objectness;
-        pout_item[5] = label;
-        pout_item[6] = 1; // 1 = keep, 0 = ignore
+        *pout_item++ = left;
+        *pout_item++ = top;
+        *pout_item++ = right;
+        *pout_item++ = bottom;
+        *pout_item++ = confidence;
+        *pout_item++ = label;
+        *pout_item++ = 1; // 1 = keep, 0 = ignore
         for(int i = 0; i < 784; ++i){
-            pout_item[i+7] = *(pitem+i+1+num_classes);
+            *pout_item++ = *(pitem+i+1+num_classes);
         }
-        // __syncthreads();
-        // printf("修改后:%f--%f--%f--%f--%f\n", left, top, right, bottom, objectness);
-        // __syncthreads();
+
     }
 
     static __device__ float box_iou(
