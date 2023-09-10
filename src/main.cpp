@@ -26,31 +26,24 @@ int main(){
     // string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model-FCOS-Q1-2.trtmode)";
     // string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model_blender-Q1.trtmodel)";
 
-    string fcos_engine_path = R"(/media/ps/data/train/LL/onnx_pre/model-FCOS.trtmodel)";
-    string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/OQC/101-50cls/model_blender-oqc.trtmodel)";
+    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy)";
+    string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_blender.trtmodel)";
 
 
     BdmApp bdmapp;
     shared_ptr<Fcos::Infer> fcos1 = nullptr;
     shared_ptr<Blender::Infer> blender1 = nullptr;
 
-    int device_id1 = 0;
-    // float mean[] = {49.906, 50.104, 50.678};
-    // float std[] = {72.305, 71.826, 71.672};
+    int device_id1 = 2;
 
-    // float mean[] = {59.406};
-    // float std[] = {59.32};
-
-    float mean[] = {86};
-    float std[] = {76};
+    float mean[] = {90};
+    float std[] = {77};
 
 
     bool result1 = bdmapp.bdminit(fcos1, blender1, fcos_engine_path, blend_engine_path, mean, std, device_id1);
-    // string src = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/imgs/*.jpg)";
-    // string dst = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/tinf)";
 
-    string src = R"(/media/ps/data/train/LL/onnx_pre/img/*.jpg)";
-    string dst = R"(/media/ps/data/train/LL/onnx_pre/inf)";
+    string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/*.jpg)";
+    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inf)";
 
     vector<cv::String> files_;
     files_.reserve(10000);

@@ -270,6 +270,17 @@ namespace TRT {
 			auto type = context->engine_->getBindingDataType(i);
 			const char* bindingName = context->engine_->getBindingName(i);
 			dims.d[0] = max_batchsize;
+            if (strcmp(bindingName,"input_image") == 0){
+                dims.d[2] = 4096;
+                dims.d[3] = 5472;
+            }
+            else if(strcmp(bindingName,"bases") == 0){
+                dims.d[2] = 1024;
+                dims.d[3] = 1368;
+            }
+            else if(strcmp(bindingName,"pred") == 0){
+                dims.d[1] = 466528;
+            }
 			auto newTensor = make_shared<Tensor>(dims.nbDims, dims.d, convert_trt_datatype(type));
 			newTensor->set_stream(this->context_->stream_);
 			newTensor->set_workspace(this->workspace_);
@@ -322,13 +333,18 @@ namespace TRT {
 
 		EngineContext* context = (EngineContext*)context_.get();
 		int inputBatchSize = inputs_[0]->size(0);
+        auto input_dims = inputs_[0]->dims();
 		for(int i = 0; i < context->engine_->getNbBindings(); ++i){
 			auto dims = context->engine_->getBindingDimensions(i);
 			auto type = context->engine_->getBindingDataType(i);
-			dims.d[0] = 1;
 			if(context->engine_->bindingIsInput(i)){
+                dims.d[0] = 1;
+                dims.d[1] = input_dims[1];
+                dims.d[2] = input_dims[2];
+                dims.d[3] = input_dims[3];
 				context->context_->setBindingDimensions(i, dims);
 			}
+
 		}
 
 		for (int i = 0; i < outputs_.size(); ++i) {

@@ -28,46 +28,9 @@ h,w
           --maxShapes=input_image:1x1x4096x5472  \
           --fp16 \
           --device=2 \
-          --workspace=10240 \
-          --preview=fasterDynamicShapes0805
+          --workspace=10240
 
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy222.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy-2048 \
-          --minShapes=input_image:1x1x1024x1024,bases:1x4x256x256,pred:1x21824x839 \
-          --optShapes=input_image:1x1x2048x2048,bases:1x4x512x512,pred:1x87296x839  \
-          --maxShapes=input_image:1x1x2048x2048,bases:1x4x512x512,pred:1x87296x839  \
-          --fp16 \
-          --device=2 \
-          --workspace=10240 \
-          --preview=fasterDynamicShapes0805
 
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy222.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy-1024 \
-          --minShapes=input_image:1x1x1024x1024,bases:1x4x256x256,pred:1x21824x839 \
-          --optShapes=input_image:1x1x1024x1024,bases:1x4x256x256,pred:1x21824x839  \
-          --maxShapes=input_image:1x1x1024x1024,bases:1x4x256x256,pred:1x21824x839  \
-          --fp16 \
-          --device=2 \
-          --workspace=10240 \
-          --preview=fasterDynamicShapes0805
-
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy222.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy-1024 \
-          --minShapes=input_image:1x1x512x512,bases:1x4x128x128,pred:1x5456x839 \
-          --optShapes=input_image:1x1x1024x1024,bases:1x4x256x256,pred:1x21824x839  \
-          --maxShapes=input_image:1x1x1024x1024,bases:1x4x256x256,pred:1x21824x839  \
-          --fp16 \
-          --device=2 \
-          --workspace=10240 \
-
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy333.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy-1024 \
-          --minShapes=input_image:1x1x512x512 \
-          --optShapes=input_image:1x1x1024x1024  \
-          --maxShapes=input_image:1x1x1024x1024  \
-          --fp16 \
-          --device=2 \
-          --workspace=10240 \
 
         
 
@@ -129,6 +92,7 @@ def patch_blendmask(cfg, model, output_names):
 def patch_fcos(cfg, proposal_generator):
     def proposal_generator_forward(self, images, features, gt_instances=None, top_module=None):
         features = [features[f] for f in self.in_features]
+        print("---", self.in_features)
         locations = self.compute_locations(features)
         logits_pred, reg_pred, ctrness_pred, top_feats, bbox_towers = self.fcos_head(features, top_module, self.yield_proposal)
         results = predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_feats)
@@ -174,8 +138,10 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_f
         merge_box_regression.append(out_box_regression)
         merge_top_feat.append(out_top_feat)
         merge_ctrness_pred.append(out_ctrness_pred)
+        print(l.shape, out_logits_pred.shape, out_box_regression.shape, out_top_feat.shape, out_ctrness_pred.shape)
     
     merge_location = torch.cat(merge_location, 0) # torch.Size([65536, 2])  torch.Size([16384, 2]) torch.Size([4096, 2]) 
+    print(merge_location.shape)
     merge_logits_pred = torch.cat(merge_logits_pred, 1)
     merge_logits_pred_max = torch.max(merge_logits_pred, 2)[0][:,:,None]
     merge_box_regression = torch.cat(merge_box_regression, 1)[0]
@@ -198,7 +164,7 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_f
     # batch_index = torch.zeros((1, detections.shape[0], 1), dtype=detections.dtype, device=detections.device)
     # pred = torch.cat([batch_index, detections[None], merge_logits_pred_max, merge_logits_pred], 2)
     pred = torch.cat([detections[None], merge_logits_pred_max, merge_logits_pred, merge_top_feat], 2)
-    
+    # print(pred.shape)
     return pred
     
 
@@ -225,7 +191,7 @@ def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_
     # if not thresh_with_ctr:
     #     logits_pred = logits_pred * ctrness_pred[:, :, None]
 
-
+    # C, H, W = int(C), int(H), int(W)
     # put in the same format as locations
     logits_pred = logits_pred.view(-1, C, H, W).permute(0, 2, 3, 1)      # (1,25,256,256) => (1,256,256,25)
     logits_pred = logits_pred.reshape(-1, H*W, C).sigmoid()               # (1,256,256,25) => (1,65536,25)
@@ -238,7 +204,7 @@ def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_
     top_feat = top_feat.reshape(-1, H * W, 784)                       # (1,256,256,784) => (1,65536)
     logits_pred = logits_pred * ctrness_pred[:, :, None]
 
-    
+    print("*********",logits_pred.shape, box_regression.shape, top_feat.shape, ctrness_pred.shape)
     return logits_pred, box_regression, top_feat, ctrness_pred
 
 def patch_fcos_head(cfg, fcos_head):
@@ -301,8 +267,8 @@ def main():
         metavar="FILE",
         help="path to config file",
     )
-    parser.add_argument('--width', default=2048, type=int)
-    parser.add_argument('--height', default=2048, type=int)
+    parser.add_argument('--width', default=5472, type=int)
+    parser.add_argument('--height', default=3648, type=int)
     parser.add_argument('--channel', default=1, type=int)
     
     parser.add_argument(
@@ -313,7 +279,7 @@ def main():
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy777.onnx",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy777--.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )

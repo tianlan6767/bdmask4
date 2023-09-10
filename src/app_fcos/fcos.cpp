@@ -25,6 +25,19 @@ namespace Fcos{
         float* parray, float nms_threshold, int max_objects, cudaStream_t stream
     );
 
+    int calculate(int h, int w){
+        int array[] = {8, 16, 32, 64, 128};
+        int result = 0;
+        auto feature_num = [&](int value) {
+            
+            return static_cast<int>(std::ceil(static_cast<double>(h) / value) * std::ceil(static_cast<double>(w) / value));
+        };
+        for(int i=0;i < sizeof(array)/ sizeof(array[0]); i++){
+            result += feature_num(array[i]);
+        }
+        return result;
+    }
+
     struct AffineMatrix{
         float i2d[6];       // image to dst(network), 2x3 matrix
         float d2i[6];       // dst to image, 2x3 matrix
@@ -99,7 +112,6 @@ namespace Fcos{
             
             input_width_       = input->size(3);
             input_height_      = input->size(2);
-            // bases_out_shape1   = bases_out->size(2);
             tensor_allocator_  = make_shared<MonopolyAllocator<TRT::Tensor>>(max_batch_size * 2);
             stream_            = engine->get_stream();
             gpu_               = gpuid;
@@ -120,6 +132,13 @@ namespace Fcos{
 
                 int infer_batch_size = fetch_jobs.size();
                 input->resize_single_dim(0, infer_batch_size);
+                input->resize_single_dim(2, input_height_);
+                input->resize_single_dim(3, input_width_);
+                bases_out->resize_single_dim(2, int(input_height_/4));
+                bases_out->resize_single_dim(3, int(input_width_/4));
+                output->resize_single_dim(1,calculate(input_height_, input_width_));
+
+                // printf("*****%d-%d-%d-%d-%d\n", input->size(2), input->size(3),bases_out->size(2), bases_out->size(3),output->size(1));
 
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job  = fetch_jobs[ibatch];
@@ -137,7 +156,7 @@ namespace Fcos{
                     float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
                     auto affine_matrix        = affin_matrix_device.gpu<float>(ibatch);
                     checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(int), stream_));
-                    output->save_to_file("./inf/orig/used/output");
+                    // output->save_to_file("./inf/orig/used/output");
 
                     decode_kernel_invoker(image_pred_output, output->size(1), num_classes, confidence_threshold_, affine_matrix, output_array_ptr, MAX_IMAGE_BBOX, stream_);
                     // output_array_device.save_to_file("./inf/orig/used/output_device");
@@ -206,11 +225,13 @@ namespace Fcos{
                 tensor->set_workspace(make_shared<TRT::MixMemory>());
             }
 
-            Size input_size(input_width_, input_height_);
+            Size input_size(image.cols, image.rows);
             job.additional.compute(image.size(), input_size);
             
             tensor->set_stream(stream_);
-            tensor->resize(1, channel, input_height_, input_width_);
+            tensor->resize(1, channel, image.rows, image.cols);
+            input_width_ = image.cols;
+            input_height_ = image.rows;
 
             size_t size_image      = image.cols * image.rows * channel;
             size_t size_matrix     = iLogger::upbound(sizeof(job.additional.d2i), 32);
@@ -232,13 +253,12 @@ namespace Fcos{
 
             CUDAKernel::warp_affine_bilinear_and_normalize_plane(
                 image_device,         image.cols * channel,       image.cols,       image.rows, 
-                tensor->gpu<float>(), input_width_,         input_height_, 
+                tensor->gpu<float>(), image.cols,         image.rows, 
                 affine_matrix_device, 0, 
                 normalize_, stream_
             );
 
-            
-            // tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdmask5-back/workspace/inf/1");
+            // tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/process/1");
 
             return true;
         }
