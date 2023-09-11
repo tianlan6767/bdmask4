@@ -26,7 +26,7 @@ int main(){
     // string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model-FCOS-Q1-2.trtmode)";
     // string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model_blender-Q1.trtmodel)";
 
-    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy)";
+    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-2048)";
     string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_blender.trtmodel)";
 
 

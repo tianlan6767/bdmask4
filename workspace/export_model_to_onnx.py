@@ -51,6 +51,7 @@ import onnx
 import math
 import os.path as osp
 import os
+import cv2
 # multiple versions of Adet/FCOS are installed, remove the conflict ones from the path
 try:
     from remove_python_path import remove_path
@@ -92,7 +93,6 @@ def patch_blendmask(cfg, model, output_names):
 def patch_fcos(cfg, proposal_generator):
     def proposal_generator_forward(self, images, features, gt_instances=None, top_module=None):
         features = [features[f] for f in self.in_features]
-        print("---", self.in_features)
         locations = self.compute_locations(features)
         logits_pred, reg_pred, ctrness_pred, top_feats, bbox_towers = self.fcos_head(features, top_module, self.yield_proposal)
         results = predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_feats)
@@ -132,16 +132,15 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_f
         c = per_bundle["c"]
         t = per_bundle["t"] if "t" in bundle else None
         out_logits_pred, out_box_regression, out_top_feat, out_ctrness_pred = forward_for_single_feature_map(cfg, o, r, c, t)
-        # print(l.shape, out_logits_pred.shape, out_box_regression.shape, out_top_feat.shape)
+
         merge_location.append(l)
         merge_logits_pred.append(out_logits_pred)
         merge_box_regression.append(out_box_regression)
         merge_top_feat.append(out_top_feat)
         merge_ctrness_pred.append(out_ctrness_pred)
-        print(l.shape, out_logits_pred.shape, out_box_regression.shape, out_top_feat.shape, out_ctrness_pred.shape)
+
     
     merge_location = torch.cat(merge_location, 0) # torch.Size([65536, 2])  torch.Size([16384, 2]) torch.Size([4096, 2]) 
-    print(merge_location.shape)
     merge_logits_pred = torch.cat(merge_logits_pred, 1)
     merge_logits_pred_max = torch.max(merge_logits_pred, 2)[0][:,:,None]
     merge_box_regression = torch.cat(merge_box_regression, 1)[0]
@@ -169,7 +168,6 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_f
     
 
 def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_feat=None):
-    thresh_with_ctr = cfg.MODEL.FCOS.THRESH_WITH_CTR
     # N, C, H, W = list(map(int, logits_pred.shape))
     N, C, H, W = logits_pred.shape
 
@@ -180,16 +178,11 @@ def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_
     # box_regression = box_regression.reshape(N, -1, 4)                   # (1,256,256,4) => (1,65536,4)
     # ctrness_pred = ctrness_pred.view(N, 1, H, W).permute(0, 2, 3, 1)    # (1,1,256,256) => (1,256,256,1)
     # ctrness_pred = ctrness_pred.reshape(N, -1).sigmoid()                # (1,256,256,1) => (1,65536)
-    # if top_feat is not None:
-    #     top_feat = top_feat.view(N, -1, H, W).permute(0, 2, 3, 1)       # (1,784,256,256) => (1,256,256,784)
-    #     top_feat = top_feat.reshape(N, H * W, -1)                       # (1,256,256,784) => (1,65536)
+    # top_feat = top_feat.view(N, -1, H, W).permute(0, 2, 3, 1)       # (1,784,256,256) => (1,256,256,784)
+    # top_feat = top_feat.reshape(N, H * W, -1)                       # (1,256,256,784) => (1,65536)
     # if self.thresh_with_ctr is True, we multiply the classification
     # scores with centerness scores before applying the threshold.
-    # if thresh_with_ctr:
-    #     logits_pred = logits_pred * ctrness_pred[:, :, None]
-
-    # if not thresh_with_ctr:
-    #     logits_pred = logits_pred * ctrness_pred[:, :, None]
+    # logits_pred = logits_pred * ctrness_pred[:, :, None]
 
     # C, H, W = int(C), int(H), int(W)
     # put in the same format as locations
@@ -203,8 +196,7 @@ def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_
     top_feat = top_feat.view(-1, 784, H, W).permute(0, 2, 3, 1)       # (1,784,256,256) => (1,256,256,784)
     top_feat = top_feat.reshape(-1, H * W, 784)                       # (1,256,256,784) => (1,65536)
     logits_pred = logits_pred * ctrness_pred[:, :, None]
-
-    print("*********",logits_pred.shape, box_regression.shape, top_feat.shape, ctrness_pred.shape)
+    # print("*********",logits_pred.shape, box_regression.shape, top_feat.shape, ctrness_pred.shape)
     return logits_pred, box_regression, top_feat, ctrness_pred
 
 def patch_fcos_head(cfg, fcos_head):
@@ -267,8 +259,8 @@ def main():
         metavar="FILE",
         help="path to config file",
     )
-    parser.add_argument('--width', default=5472, type=int)
-    parser.add_argument('--height', default=3648, type=int)
+    parser.add_argument('--width', default=2048, type=int)
+    parser.add_argument('--height', default=2048, type=int)
     parser.add_argument('--channel', default=1, type=int)
     
     parser.add_argument(
@@ -279,7 +271,7 @@ def main():
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy777--.onnx",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -297,7 +289,7 @@ def main():
     config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:2"
+    cfg.MODEL.DEVICE = "cuda:3"
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50  # 3 classes (data, fig, hazelnut)
     cfg.MODEL.FCOS.NUM_CLASSES = 50
 
@@ -328,8 +320,12 @@ def main():
     if args.height > 0:
         height = args.height
     input_names = ["input_image"]
+    
+    # 加载图像
+    # im = cv2.imread(r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/2048.jpg", 0)
+    
     dummy_input = torch.zeros((1, args.channel, height, width)).to(cfg.MODEL.DEVICE)
-    # print(dummy_input.shape, dummy_input.type())
+
     output_names = []
     if isinstance(model, BlendMask):
         patch_blendmask(cfg, model, output_names)
@@ -351,11 +347,11 @@ def main():
         output_names=output_names,
         keep_initializers_as_inputs=False,
         opset_version=11,
-        dynamic_axes = {
-            "input_image":{2:"h", 3:"w"},
-            "bases":{2: "bases_h", 3:"bases_w"},
-            "pred":{1:"pred_nums"}
-        }
+        # dynamic_axes = {
+        #     "input_image":{2:"h", 3:"w"},
+        #     "bases":{2: "bases_h", 3:"bases_w"},
+        #     "pred":{1:"pred_nums"}
+        # }
     )
 
     onnx_model = onnx.load(args.output)
