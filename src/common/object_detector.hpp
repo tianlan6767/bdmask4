@@ -34,8 +34,8 @@ namespace ObjectDetector
 
 
     struct Base {
-        static const int kWidth = 768;
-        static const int kHeight = 1024;
+        int kWidth = 768;
+        int kHeight = 1024;
         std::shared_ptr<float> base;
         Base() : base(new float[kWidth * kHeight], std::default_delete<float[]>()) {}
         Base(float val) : base(new float[kWidth * kHeight], std::default_delete<float[]>())

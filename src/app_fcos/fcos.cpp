@@ -25,6 +25,8 @@ namespace Fcos{
         float* parray, float nms_threshold, int max_objects, cudaStream_t stream
     );
 
+    void recount_box(float* parray, int h, int w, int max_objects, cudaStream_t stream);
+
     int calculate(int h, int w){
         int array[] = {8, 16, 32, 64, 128};
         int result = 0;
@@ -100,7 +102,7 @@ namespace Fcos{
             engine->print();
 
             const int MAX_IMAGE_BBOX = 1024;
-            const int NUM_BOX_ELEMENT = 791;    // left, top, right, bottom, confidence, keepflag(1keep,0ignore), top_feat(784)
+            const int NUM_BOX_ELEMENT = 792;    // left, top, right, bottom, confidence, keepflag(1keep,0ignore), num_index, top_feat(784)
             TRT::Tensor affin_matrix_device(TRT::DataType::Float);
             TRT::Tensor output_array_device(TRT::DataType::Float);
             TRT::Tensor output_bases_device(TRT::DataType::Float);
@@ -138,8 +140,6 @@ namespace Fcos{
                 bases_out->resize_single_dim(3, int(input_width_/4));
                 output->resize_single_dim(1,calculate(input_height_, input_width_));
 
-                // printf("*****%d-%d-%d-%d-%d\n", input->size(2), input->size(3),bases_out->size(2), bases_out->size(3),output->size(1));
-
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job  = fetch_jobs[ibatch];
                     auto& mono = job.mono_tensor->data();
@@ -155,21 +155,25 @@ namespace Fcos{
                     
                     float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
                     auto affine_matrix        = affin_matrix_device.gpu<float>(ibatch);
-                    checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(int), stream_));
+                    checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(float)*(1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT)*(max_batch_size), stream_));
                     // output->save_to_file("./inf/orig/used/output");
 
                     decode_kernel_invoker(image_pred_output, output->size(1), num_classes, confidence_threshold_, affine_matrix, output_array_ptr, MAX_IMAGE_BBOX, stream_);
                     // output_array_device.save_to_file("./inf/orig/used/output_device");
+                    recount_box(output_array_ptr, input_height_, input_width_, MAX_IMAGE_BBOX, stream_);
                     if(nms_method_ == NMSMethod::FastGPU){
                         nms_kernel_invoker(output_array_ptr, nms_threshold_, MAX_IMAGE_BBOX, stream_);
                     }
-                    // output_array_device.save_to_file("./inf/orig/used/output_device");
                 }
+
                 output_array_device.to_cpu();
-                Base base_out;
-                const int kDataSize =  bases_out->size(1)*bases_out->size(2)*bases_out->size(3);
-                base_out.base = shared_ptr<float>(new float[kDataSize], std::default_delete<float[]>());
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
+                    Base base_out;
+                    base_out.kHeight = bases_out->size(2);
+                    base_out.kWidth = bases_out->size(3);
+                    const int kDataSize =  bases_out->size(1)*base_out.kHeight*base_out.kWidth;
+                    base_out.base = shared_ptr<float>(new float[kDataSize], std::default_delete<float[]>());
+
                     float* parray = output_array_device.cpu<float>(ibatch);
                     auto bases_out       = engine->output(0);
                     float* bases_parray = bases_out->cpu<float>(ibatch);
@@ -191,7 +195,7 @@ namespace Fcos{
                             obj.bottom     = pbox[3];
                             obj.confidence = pbox[4];
                             obj.class_label = pbox[5];
-                            memcpy(obj.top_feat, pbox + 7, sizeof(obj.top_feat)); 
+                            memcpy(obj.top_feat, pbox+7, sizeof(obj.top_feat)); 
                             image_based_boxes.BoxArray.emplace_back(obj);
                         }
                     }
@@ -225,15 +229,17 @@ namespace Fcos{
                 tensor->set_workspace(make_shared<TRT::MixMemory>());
             }
 
-            Size input_size(image.cols, image.rows);
-            job.additional.compute(image.size(), input_size);
+
             
             tensor->set_stream(stream_);
-            tensor->resize(1, channel, image.rows, image.cols);
-            input_width_ = image.cols;
-            input_height_ = image.rows;
+            input_width_ = iLogger::upbound(image.cols, 32);
+            input_height_ = iLogger::upbound(image.rows, 32);
+            tensor->resize(1, channel, input_height_, input_width_);
+            
+            Size input_size(input_width_, input_height_);
+            job.additional.compute(image.size(), input_size);
 
-            size_t size_image      = image.cols * image.rows * channel;
+            size_t size_image      = input_width_ * input_height_ * channel;
             size_t size_matrix     = iLogger::upbound(sizeof(job.additional.d2i), 32);
             auto workspace         = tensor->get_workspace();
             uint8_t* gpu_workspace        = (uint8_t*)workspace->gpu(size_matrix + size_image);
@@ -253,12 +259,12 @@ namespace Fcos{
 
             CUDAKernel::warp_affine_bilinear_and_normalize_plane(
                 image_device,         image.cols * channel,       image.cols,       image.rows, 
-                tensor->gpu<float>(), image.cols,         image.rows, 
+                tensor->gpu<float>(), input_width_,         input_height_, 
                 affine_matrix_device, 0, 
                 normalize_, stream_
             );
 
-            // tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/process/1");
+            // tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/process/2448");
 
             return true;
         }

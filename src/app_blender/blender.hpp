@@ -16,7 +16,7 @@ namespace Blender
 
     typedef cv::Mat feature;
 
-    typedef tuple<std::shared_ptr<float>, std::shared_ptr<float>, float*> commit_input;
+    typedef tuple<Base, std::shared_ptr<float>, float*> commit_input;
 
 
     class Infer

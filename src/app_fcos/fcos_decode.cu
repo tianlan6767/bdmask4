@@ -2,7 +2,8 @@
 
 namespace Fcos{
 
-    const int NUM_BOX_ELEMENT = 791;      // left, top, right, bottom, confidence, class, keepflag
+    const int NUM_BOX_ELEMENT = 792;      // left, top, right, bottom, confidence, class, keepflag, box_index
+    __device__ const int FEATURE_STRIDES[] = {8, 16, 32, 64, 128};
     static __device__ void affine_project(float* matrix, float x, float y, float* ox, float* oy){
         *ox = matrix[0] * x + matrix[1] * y + matrix[2];
         *oy = matrix[3] * x + matrix[4] * y + matrix[5];
@@ -36,7 +37,6 @@ namespace Fcos{
         int index = atomicAdd(parray, 1);
         if(index >= max_objects)
             return;
-
         float left       = *pitem++;
         float top        = *pitem++;
         float right      = *pitem++;
@@ -45,6 +45,7 @@ namespace Fcos{
         affine_project(invert_affine_matrix, right, bottom, &right, &bottom);
 
         float* pout_item = parray + 1 + index * NUM_BOX_ELEMENT;
+
         *pout_item++ = left;
         *pout_item++ = top;
         *pout_item++ = right;
@@ -52,6 +53,7 @@ namespace Fcos{
         *pout_item++ = confidence;
         *pout_item++ = label;
         *pout_item++ = 1; // 1 = keep, 0 = ignore
+        *pout_item++ = position;
 
 
         for(int i = 0; i < 784; ++i){
@@ -86,7 +88,7 @@ namespace Fcos{
         if (position >= count) 
             return;
         
-        // left, top, right, bottom, confidence, class, keepflag
+        // left, top, right, bottom, confidence, class, keepflag, num_index
         float* pcurrent = bboxes + 1 + position * NUM_BOX_ELEMENT;
         for(int i = 0; i < count; ++i){
             float* pitem = bboxes + 1 + i * NUM_BOX_ELEMENT;
@@ -100,7 +102,6 @@ namespace Fcos{
                     pcurrent[0], pcurrent[1], pcurrent[2], pcurrent[3],
                     pitem[0],    pitem[1],    pitem[2],    pitem[3]
                 );
-
                 if(iou > threshold){
                     pcurrent[6] = 0;  // 1=keep, 0=ignore
                     return;
@@ -108,6 +109,41 @@ namespace Fcos{
             }
         }
     } 
+
+
+    static __global__ void recount_box_kernel(float* bboxes, int h, int w, int max_objects){
+        int position = blockDim.x * blockIdx.x + threadIdx.x;
+        int count = min((int)*bboxes, max_objects);
+        if (position >= count) 
+            return;
+        float* pcurrent = bboxes + 1 + position * NUM_BOX_ELEMENT;
+        int keepflag = pcurrent[6];
+        if (keepflag){
+            int origin_box_index = pcurrent[7];
+            int start_postion = 0;
+            for(int n=0; n < (sizeof(FEATURE_STRIDES) / sizeof(FEATURE_STRIDES[0])); ++n){
+                int stride = FEATURE_STRIDES[n];
+                int h_step = static_cast<int>(ceil(static_cast<float>(h) / stride));
+                int w_step = static_cast<int>(ceil(static_cast<float>(w) / stride));
+                int feature_hw = h_step * w_step;
+                int end_postion = start_postion + feature_hw;
+                
+                if (start_postion < origin_box_index && origin_box_index < end_postion){
+                    int feature_posion = origin_box_index - start_postion;
+                    int feature_x = feature_posion % w_step;
+                    int feature_y = feature_posion / w_step;
+                    float feature_cx = 0 + feature_x * stride + stride / 2.0f;
+                    float feature_cy = 0 + feature_y * stride + stride / 2.0f;
+                    pcurrent[0] = feature_cx - pcurrent[0];
+                    pcurrent[1] = feature_cy - pcurrent[1];
+                    pcurrent[2] = feature_cx + pcurrent[2];
+                    pcurrent[3] = feature_cy + pcurrent[3];
+                    break;
+                }
+                start_postion = end_postion;
+            }
+        }
+    }
 
     void decode_kernel_invoker(float* predict, int num_bboxes, int num_classes, float confidence_threshold, float* invert_affine_matrix, float* parray, int max_objects, cudaStream_t stream){
         
@@ -121,5 +157,11 @@ namespace Fcos{
         auto grid = CUDATools::grid_dims(max_objects);
         auto block = CUDATools::block_dims(max_objects);
         checkCudaKernel(nms_kernel<<<grid, block, 0, stream>>>(parray, max_objects, nms_threshold));
+    }
+
+    void recount_box(float* parray, int h, int w, int max_objects, cudaStream_t stream){
+        auto grid = CUDATools::grid_dims(max_objects);
+        auto block = CUDATools::block_dims(max_objects);
+        checkCudaKernel(recount_box_kernel<<<grid, block, 0, stream>>>(parray, h, w,max_objects));
     }
 };

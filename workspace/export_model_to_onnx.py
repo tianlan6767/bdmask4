@@ -30,11 +30,6 @@ h,w
           --device=2 \
           --workspace=10240
 
-
-
-        
-
-
 # about the upsample/interpolate
 https://github.com/pytorch/pytorch/issues/10446
 https://github.com/pytorch/pytorch/issues/18113
@@ -76,8 +71,6 @@ def patch_blendmask(cfg, model, output_names):
         features = self.backbone(tensor)
         basis_out, basis_losses = self.basis_module(features, basis_sem)
         proposals  = self.proposal_generator(images, features, gt_instances, self.top_layer)
-        
-        # pred_mask_logits = patch_blender(basis_out["bases"][0], proposals, gt_instances)
         return basis_out["bases"][0], proposals
         # return proposals
 
@@ -93,9 +86,8 @@ def patch_blendmask(cfg, model, output_names):
 def patch_fcos(cfg, proposal_generator):
     def proposal_generator_forward(self, images, features, gt_instances=None, top_module=None):
         features = [features[f] for f in self.in_features]
-        locations = self.compute_locations(features)
         logits_pred, reg_pred, ctrness_pred, top_feats, bbox_towers = self.fcos_head(features, top_module, self.yield_proposal)
-        results = predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_feats)
+        results = predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats)
         return results
 
     proposal_generator.forward = types.MethodType(proposal_generator_forward, proposal_generator)
@@ -107,84 +99,43 @@ def _fmt_box_list(box_tensor, batch_index: int):
     )
     return torch.cat((repeated_index, box_tensor), dim=1)
 
-def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_feats=None):
-      
+
+def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats=None):      
     strides = cfg.MODEL.FCOS.FPN_STRIDES
     bundle = {
-        "l": locations, "o": logits_pred,
+        "o": logits_pred,
         "r": reg_pred, "c": ctrness_pred,
         "s":strides
     }
-    
-    if len(top_feats) > 0:
-        bundle['t'] = top_feats
-    
-    merge_location = []
+    bundle['t'] = top_feats
     merge_logits_pred = []
     merge_box_regression = []
     merge_top_feat = []
     merge_ctrness_pred = []
     for i, per_bundle in enumerate(zip(*bundle.values())):
         per_bundle = dict(zip(bundle.keys(), per_bundle))
-        l = per_bundle["l"]
         o = per_bundle["o"]
         r = per_bundle["r"] * per_bundle["s"]
         c = per_bundle["c"]
         t = per_bundle["t"] if "t" in bundle else None
         out_logits_pred, out_box_regression, out_top_feat, out_ctrness_pred = forward_for_single_feature_map(cfg, o, r, c, t)
-
-        merge_location.append(l)
         merge_logits_pred.append(out_logits_pred)
         merge_box_regression.append(out_box_regression)
         merge_top_feat.append(out_top_feat)
         merge_ctrness_pred.append(out_ctrness_pred)
-
-    
-    merge_location = torch.cat(merge_location, 0) # torch.Size([65536, 2])  torch.Size([16384, 2]) torch.Size([4096, 2]) 
     merge_logits_pred = torch.cat(merge_logits_pred, 1)
     merge_logits_pred_max = torch.max(merge_logits_pred, 2)[0][:,:,None]
     merge_box_regression = torch.cat(merge_box_regression, 1)[0]
     merge_top_feat = torch.cat(merge_top_feat, 1) 
-    # detections = torch.stack([
-    #     merge_location[:, 0] - merge_box_regression[:, 0],
-    #     merge_location[:, 1] - merge_box_regression[:, 1],
-    #     merge_location[:, 0] + merge_box_regression[:, 2],
-    #     merge_location[:, 1] + merge_box_regression[:, 3],
-    # ], dim=1)
-
-    detections = torch.stack([
-        torch.sub(merge_location[:, 0],merge_box_regression[:, 0]),
-        torch.sub(merge_location[:, 1],merge_box_regression[:, 1]),
-        torch.add(merge_location[:, 0],merge_box_regression[:, 2]),
-        torch.add(merge_location[:, 1],merge_box_regression[:, 3]),
-    ], dim=1)
-
-    detections = merge_box_regression
-    # batch_index = torch.zeros((1, detections.shape[0], 1), dtype=detections.dtype, device=detections.device)
-    # pred = torch.cat([batch_index, detections[None], merge_logits_pred_max, merge_logits_pred], 2)
-    pred = torch.cat([detections[None], merge_logits_pred_max, merge_logits_pred, merge_top_feat], 2)
-    # print(pred.shape)
+    pred = torch.cat([merge_box_regression[None], merge_logits_pred_max, merge_logits_pred, merge_top_feat], 2)
     return pred
+
     
 
 def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_feat=None):
     # N, C, H, W = list(map(int, logits_pred.shape))
     N, C, H, W = logits_pred.shape
 
-    # put in the same format as locations
-    # logits_pred = logits_pred.view(N, C, H, W).permute(0, 2, 3, 1)      # (1,25,256,256) => (1,256,256,25)
-    # logits_pred = logits_pred.reshape(N, -1, C).sigmoid()               # (1,256,256,25) => (1,65536,25)
-    # box_regression = reg_pred.view(N, 4, H, W).permute(0, 2, 3, 1)      # (1,4,256,256) => (1,256,256,4)
-    # box_regression = box_regression.reshape(N, -1, 4)                   # (1,256,256,4) => (1,65536,4)
-    # ctrness_pred = ctrness_pred.view(N, 1, H, W).permute(0, 2, 3, 1)    # (1,1,256,256) => (1,256,256,1)
-    # ctrness_pred = ctrness_pred.reshape(N, -1).sigmoid()                # (1,256,256,1) => (1,65536)
-    # top_feat = top_feat.view(N, -1, H, W).permute(0, 2, 3, 1)       # (1,784,256,256) => (1,256,256,784)
-    # top_feat = top_feat.reshape(N, H * W, -1)                       # (1,256,256,784) => (1,65536)
-    # if self.thresh_with_ctr is True, we multiply the classification
-    # scores with centerness scores before applying the threshold.
-    # logits_pred = logits_pred * ctrness_pred[:, :, None]
-
-    # C, H, W = int(C), int(H), int(W)
     # put in the same format as locations
     logits_pred = logits_pred.view(-1, C, H, W).permute(0, 2, 3, 1)      # (1,25,256,256) => (1,256,256,25)
     logits_pred = logits_pred.reshape(-1, H*W, C).sigmoid()               # (1,256,256,25) => (1,65536,25)
@@ -196,7 +147,6 @@ def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_
     top_feat = top_feat.view(-1, 784, H, W).permute(0, 2, 3, 1)       # (1,784,256,256) => (1,256,256,784)
     top_feat = top_feat.reshape(-1, H * W, 784)                       # (1,256,256,784) => (1,65536)
     logits_pred = logits_pred * ctrness_pred[:, :, None]
-    # print("*********",logits_pred.shape, box_regression.shape, top_feat.shape, ctrness_pred.shape)
     return logits_pred, box_regression, top_feat, ctrness_pred
 
 def patch_fcos_head(cfg, fcos_head):
@@ -261,17 +211,17 @@ def main():
     )
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
-    parser.add_argument('--channel', default=1, type=int)
+    parser.add_argument('--channel', default=3, type=int)
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/project/OQC/train/0000/weights/model_0364999.pth",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999.onnx",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-3.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -290,16 +240,20 @@ def main():
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
     cfg.MODEL.DEVICE = "cuda:3"
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50  # 3 classes (data, fig, hazelnut)
-    cfg.MODEL.FCOS.NUM_CLASSES = 50
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
+    cfg.MODEL.FCOS.NUM_CLASSES = 25
 
     cfg.MODEL.RESNETS.DEPTH = 34
     cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
     cfg.MODEL.BACKBONE.FREEZE_AT = 0
         
-    cfg.INPUT.FORMAT = 'L'
-    cfg.MODEL.PIXEL_MEAN = [59.406]
-    cfg.MODEL.PIXEL_STD = [59.32]
+    # cfg.INPUT.FORMAT = 'L'
+    # cfg.MODEL.PIXEL_MEAN = [59.406]
+    # cfg.MODEL.PIXEL_STD = [59.32]
+    
+    cfg.INPUT.FORMAT = 'BGR'
+    cfg.MODEL.PIXEL_MEAN = [41,41,41]
+    cfg.MODEL.PIXEL_STD = [34,34,34]
 
 
     cfg.MODEL.BASIS_MODULE.NORM = 'BN'
@@ -347,11 +301,11 @@ def main():
         output_names=output_names,
         keep_initializers_as_inputs=False,
         opset_version=11,
-        # dynamic_axes = {
-        #     "input_image":{2:"h", 3:"w"},
-        #     "bases":{2: "bases_h", 3:"bases_w"},
-        #     "pred":{1:"pred_nums"}
-        # }
+        dynamic_axes = {
+            "input_image":{2:"h", 3:"w"},
+            "bases":{2: "bases_h", 3:"bases_w"},
+            "pred":{1:"pred_nums"}
+        }
     )
 
     onnx_model = onnx.load(args.output)

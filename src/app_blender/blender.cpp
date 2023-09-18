@@ -93,10 +93,10 @@ namespace Blender{
             auto top_feat_input     = engine->input(2);
             auto output        = engine->output();
 
-            input_width_       = base_input->size(3);
-            input_height_      = base_input->size(2);
-            feature_width_     = output->size(2);
-            feature_height_    = output->size(1);
+            // base_width_       = base_input->size(3);
+            // base_height_      = base_input->size(2);
+            // mask_width_     = output->size(2);
+            // mask_height_    = output->size(1);
             num_batch_size_    = box_input->size(0);
             box_element_       = box_input->size(1);
             top_feat_element_  = top_feat_input->size(1);
@@ -107,19 +107,23 @@ namespace Blender{
             
             base_input->resize_single_dim(0, max_batch_size).to_gpu();
             output->resize_single_dim(0, num_batch_size_).to_gpu();
-            feature_output_device.resize(num_batch_size_, num_batch_size_*feature_width_*feature_height_).to_gpu();
+            // feature_output_device.resize(num_batch_size_, num_batch_size_*mask_width_*mask_height_).to_gpu();
 
             vector<Job> fetch_jobs;
-            // MatPool mat_pool(4, feature_height_, feature_width_);
             while(get_jobs_and_wait(fetch_jobs, max_batch_size)){
                 int infer_batch_size = fetch_jobs.size();
                 base_input->resize_single_dim(0, infer_batch_size);
+                base_input->resize_single_dim(2, base_height_);
+                base_input->resize_single_dim(3, base_width_);
+                mask_height_ = base_height_ * 4;
+                mask_width_ = base_width_ * 4;
+                feature_output_device.resize(num_batch_size_, num_batch_size_*mask_width_*mask_height_).to_gpu();
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job  = fetch_jobs[ibatch];
                     auto& mono = job.mono_tensor->data();
                     box_input->copy_from_gpu(base_input->offset(ibatch), mono->get_workspace()->gpu(), num_batch_size_* box_element_);
                     top_feat_input->copy_from_gpu(base_input->offset(ibatch), mono->get_workspace()->gpu()+ iLogger::upbound(num_batch_size_* box_element_ * sizeof(float), 32), num_batch_size_ * top_feat_element_);
-                    base_input->copy_from_gpu(base_input->offset(ibatch), mono->get_workspace()->gpu()+ iLogger::upbound(num_batch_size_* box_element_ * sizeof(float), 32) + iLogger::upbound(num_batch_size_* top_feat_element_ * sizeof(float), 32), input_width_ * input_height_*4);
+                    base_input->copy_from_gpu(base_input->offset(ibatch), mono->get_workspace()->gpu()+ iLogger::upbound(num_batch_size_* box_element_ * sizeof(float), 32) + iLogger::upbound(num_batch_size_* top_feat_element_ * sizeof(float), 32), base_width_ * base_height_*4);
                     job.mono_tensor->release();
                 }
                 // auto st = iLogger::timestamp_now_float();
@@ -139,13 +143,13 @@ namespace Blender{
                     checkCudaRuntime(cudaMemsetAsync(feature_output_ptr, 0, sizeof(int), stream_));
 
                     // auto et2_0 = iLogger::timestamp_now_float();
-                    feature feature_mat = Mat::zeros(feature_height_, feature_width_, CV_8UC1);
+                    feature feature_mat = Mat::zeros(mask_height_, mask_width_, CV_8UC1);
 
                     // CUDAKernel::threshold_feature(image_output, feature_output_ptr, num_batch_size_, output->size(1), output->size(2), 0.5f, stream_);
                     // auto et2_1 = iLogger::timestamp_now_float();
 
-                    CUDAKernel::threshold_feature_mat(image_output, feature_output_ptr, num_batch_size_, output->size(1), output->size(2), 0.5f, stream_);
-                    cudaMemcpy(feature_mat.data, feature_output_ptr, sizeof(uint8_t) * feature_height_* feature_width_, cudaMemcpyDeviceToHost);
+                    CUDAKernel::threshold_feature_mat(image_output, feature_output_ptr, num_batch_size_, mask_height_, mask_width_, 0.5f, stream_);
+                    cudaMemcpy(feature_mat.data, feature_output_ptr, sizeof(uint8_t) * mask_height_* mask_width_, cudaMemcpyDeviceToHost);
                     job.pro->set_value(feature_mat);
                     // mat_pool.return_mat(feature_mat);
                     // auto et2_2 = iLogger::timestamp_now_float();
@@ -164,14 +168,14 @@ namespace Blender{
 
         virtual bool preprocess(Job& job, const commit_input& input) override{
             
-            auto& image_feature = get<0>(input);
+            auto& base_feature = get<0>(input);
+            auto image_feature = base_feature.base;
+            base_width_ = base_feature.kWidth;
+            base_height_ = base_feature.kHeight;
             auto& box = get<1>(input);
             auto& top_feat = get<2>(input);
             // cout << "当前box:" << box.get()[0] <<"**"<< box.get()[1] <<"**"<< box.get()[2] <<"**"<<box.get()[3]<<"**"<<box.get()[4]<< endl;
-
             // cout << "当前feat:" << top_feat[0] << endl;
-
-
             if(tensor_allocator_ == nullptr){
                 INFOE("tensor_allocator_ is nullptr");
                 return false;
@@ -190,12 +194,12 @@ namespace Blender{
             }
             
 
-            Size input_size(input_width_, input_height_);
+            Size input_size(base_width_, base_height_);
 
             
             tensor->set_stream(stream_);
 
-            size_t size_image_feature_ =   iLogger::upbound(input_height_*input_width_ * 4 * sizeof(float), 32);
+            size_t size_image_feature_ =   iLogger::upbound(base_height_*base_width_ * 4 * sizeof(float), 32);
 
             size_t size_box_num     = num_batch_size_ * box_element_;
             size_t size_box_         =     iLogger::upbound(size_box_num*sizeof(float), 32);
@@ -239,10 +243,10 @@ namespace Blender{
         }
 
     private:
-        int input_width_            = 0;
-        int input_height_           = 0;
-        int feature_width_          = 0;
-        int feature_height_         = 0;
+        int base_width_            = 0;
+        int base_height_           = 0;
+        int mask_width_          = 0;
+        int mask_height_         = 0;
         int box_element_            = 0;
         int num_batch_size_         = 0;
         int top_feat_element_       = 0;

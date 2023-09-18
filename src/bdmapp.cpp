@@ -4,7 +4,7 @@ bool BdmApp::bdminit(shared_ptr<Fcos::Infer> &fcos, shared_ptr<Blender::Infer> &
 {   
 
     // int device_id = 0;
-    fcos = Fcos::create_infer(fcos_engine_path, device_id, 0.25, mean, std);
+    fcos = Fcos::create_infer(fcos_engine_path, device_id, 0.09, mean, std);
     blender = Blender::create_infer(blender_engine_path, device_id);
     if (fcos != nullptr && blender != nullptr)
     {
@@ -19,13 +19,8 @@ bool BdmApp::bdminit(shared_ptr<Fcos::Infer> &fcos, shared_ptr<Blender::Infer> &
 ObjectDetector::Defect BdmApp::bdmapp(shared_ptr<Fcos::Infer> fcos, shared_ptr<Blender::Infer>  blender, cv::Mat& image){
     // FCOS推理分支
     auto boxes = fcos->commit(image).get();
-
-
-
-
-
-    auto  fcos_base = boxes.BasesArray[0].base;    
-    vector<std::tuple<std::shared_ptr<float>, std::shared_ptr<float>, float*>> commit_inputs;
+    auto  fcos_base = boxes.BasesArray[0];
+    vector<std::tuple<ObjectDetector::Base, std::shared_ptr<float>, float*>> commit_inputs;
     ObjectDetector::Defect defect_obj;
     for(auto& box : boxes.BoxArray){
         std::shared_ptr<float> boxin(new float[5]);
@@ -42,13 +37,12 @@ ObjectDetector::Defect BdmApp::bdmapp(shared_ptr<Fcos::Infer> fcos, shared_ptr<B
         defect_obj.scores.emplace_back(sqrt(box.confidence));  
         defect_obj.boxes.emplace_back(box);                               
     }
-    
-    // if (commit_inputs.size() > 0){
-    //     auto masks = blender->commits(commit_inputs);
-    //     for(auto& m : masks){
-    //         auto img_mask = m.get();
-    //         defect_obj.masks.emplace_back(img_mask);
-    //     }
-    // }
+    if (commit_inputs.size() > 0){
+        auto masks = blender->commits(commit_inputs);
+        for(auto& m : masks){
+            auto img_mask = m.get();
+            defect_obj.masks.emplace_back(img_mask);
+        }
+    }
     return defect_obj;
 }
