@@ -19,7 +19,7 @@
             "environment": [
                 {
                     "name": "LD_LIBRARY_PATH",
-                    "value": "/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/lib64:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/py38:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/cpp-packages/opencv4.2/lib:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/lib:$LD_LIBRARY_PATH"
+                    "value": "/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/lib64:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/py38:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/cpp-packages/opencv4.2/lib:/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/lib:/media/ps/data/train/LQ/LQ/bdms/lean/libtorch/lib:$LD_LIBRARY_PATH"
                 },
                 {
                     "name": "CUDA_LAUNCH_BLOCKING",

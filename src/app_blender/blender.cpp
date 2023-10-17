@@ -117,6 +117,7 @@ namespace Blender{
                 base_input->resize_single_dim(3, base_width_);
                 mask_height_ = base_height_ * 4;
                 mask_width_ = base_width_ * 4;
+
                 feature_output_device.resize(num_batch_size_, num_batch_size_*mask_width_*mask_height_).to_gpu();
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job  = fetch_jobs[ibatch];
@@ -126,16 +127,16 @@ namespace Blender{
                     base_input->copy_from_gpu(base_input->offset(ibatch), mono->get_workspace()->gpu()+ iLogger::upbound(num_batch_size_* box_element_ * sizeof(float), 32) + iLogger::upbound(num_batch_size_* top_feat_element_ * sizeof(float), 32), base_width_ * base_height_*4);
                     job.mono_tensor->release();
                 }
+
                 // auto st = iLogger::timestamp_now_float();
                 engine->forward(false);
                 feature_output_device.to_gpu(false);
-                // box_input->save_to_file("./box_input");
-                // top_feat_input->save_to_file("./top_feat_input");
-                // base_input->save_to_file("./base_input");
-
-                
+                // box_input->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/box_input");
+                // top_feat_input->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/top_feat_input");
+                // base_input->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/base_input");
                 
                 // auto et1 = iLogger::timestamp_now_float();
+                // output->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/output-nogrid-sampler");
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job                 = fetch_jobs[ibatch];
                     float* image_output = output->gpu<float>(ibatch);
@@ -149,6 +150,11 @@ namespace Blender{
                     // auto et2_1 = iLogger::timestamp_now_float();
 
                     CUDAKernel::threshold_feature_mat(image_output, feature_output_ptr, num_batch_size_, mask_height_, mask_width_, 0.5f, stream_);
+
+                    // feature feature_mat = Mat::zeros(box_mask_height_, box_mask_width_, CV_8UC1);
+                    // CUDAKernel::threshold_feature_mat(image_output, feature_output_ptr, num_batch_size_, box_mask_height_, box_mask_width_, 0.5f, stream_);
+                    
+
                     cudaMemcpy(feature_mat.data, feature_output_ptr, sizeof(uint8_t) * mask_height_* mask_width_, cudaMemcpyDeviceToHost);
                     job.pro->set_value(feature_mat);
                     // mat_pool.return_mat(feature_mat);
@@ -174,8 +180,7 @@ namespace Blender{
             base_height_ = base_feature.kHeight;
             auto& box = get<1>(input);
             auto& top_feat = get<2>(input);
-            // cout << "当前box:" << box.get()[0] <<"**"<< box.get()[1] <<"**"<< box.get()[2] <<"**"<<box.get()[3]<<"**"<<box.get()[4]<< endl;
-            // cout << "当前feat:" << top_feat[0] << endl;
+
             if(tensor_allocator_ == nullptr){
                 INFOE("tensor_allocator_ is nullptr");
                 return false;

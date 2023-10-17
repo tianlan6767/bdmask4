@@ -3,7 +3,7 @@ name      := pro
 workdir   := workspace
 srcdir    := src
 objdir    := objs
-stdcpp    := c++11
+stdcpp    := c++14
 cuda_home := /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8
 syslib    := /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/lib
 cpp_pkg   := /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/cpp-packages
@@ -28,8 +28,9 @@ link_trtpro    :=
 link_tensorRT  := nvinfer nvinfer_plugin nvonnxparser
 link_opencv    := opencv_core opencv_imgproc opencv_imgcodecs
 link_boost     := boost_system boost_filesystem
+link_libtorch  := torch torch_cuda c10_cuda c10 torch_cpu
 # link_sys       := stdc++ dl protobuf 
-link_librarys  := $(link_cuda) $(link_tensorRT) $(link_opencv) $(link_boost) 
+link_librarys  := $(link_cuda) $(link_tensorRT) $(link_opencv) $(link_boost) $(link_libtorch) 
 
 # 定义头文件路径，请注意斜杠后边不能有空格
 # 只需要写路径，不需要写-I
@@ -39,10 +40,12 @@ include_paths := src              \
     $(cuda_home)/include/cuda     \
 	$(cuda_home)/include/tensorRT \
 	$(cpp_pkg)/opencv4.2/include  \
-	/usr/include/boost
+	/usr/include/boost \
+	/media/ps/data/train/LQ/LQ/bdms/lean/libtorch/include \
+	/media/ps/data/train/LQ/LQ/bdms/lean/libtorch/include/torch/csrc/api/include 
 
 # 定义库文件路径，只需要写路径，不需要写-L
-library_paths := $(cuda_home)/lib64 $(syslib) $(cpp_pkg)/opencv4.2/lib 
+library_paths := $(cuda_home)/lib64 $(syslib) $(cpp_pkg)/opencv4.2/lib /media/ps/data/train/LQ/LQ/bdms/lean/libtorch/lib
 
 # 把library path给拼接为一个字符串，例如a b c => a:b:c
 # 然后使得LD_LIBRARY_PATH=a:b:c

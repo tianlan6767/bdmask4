@@ -272,18 +272,18 @@ namespace TRT {
 			dims.d[0] = max_batchsize;
             if (strcmp(bindingName,"input_image") == 0){
                 dims.d[2] = 4096;
-                dims.d[3] = 5472;
+                dims.d[3] = 8192;
             }
             else if(strcmp(bindingName,"bases") == 0){
                 dims.d[2] = 1024;
-                dims.d[3] = 1368;
+                dims.d[3] = 2048;
             }
             else if(strcmp(bindingName,"pred") == 0){
-                dims.d[1] = 466528;
+                dims.d[1] = 698368;
             }
             else if(strcmp(bindingName,"mask_pred") == 0){
                 dims.d[1] = 4096;
-                dims.d[2] = 5472;
+                dims.d[2] = 8192;
             }
 			auto newTensor = make_shared<Tensor>(dims.nbDims, dims.d, convert_trt_datatype(type));
 			newTensor->set_stream(this->context_->stream_);
@@ -346,10 +346,6 @@ namespace TRT {
                 for(int j=0; j < input_dims.size(); ++j){
                     dims.d[j] = input_dims[j];
                 }
-                // dims.d[0] = 1;
-                // dims.d[1] = input_dims[1];
-                // dims.d[2] = input_dims[2];
-                // dims.d[3] = input_dims[3];
 				context->context_->setBindingDimensions(i, dims);
 			}
 

@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.cu": "cuda-cpp",
         "random": "cpp",
         "future": "cpp",
         "tuple": "cpp",
@@ -79,7 +80,10 @@
         "__bit_reference": "cpp",
         "__node_handle": "cpp",
         "*.ipp": "cpp",
-        "__string": "cpp"
+        "__string": "cpp",
+        "forward_list": "cpp",
+        "shared_mutex": "cpp",
+        "valarray": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabled",
     "python.analysis.typeCheckingMode": "basic"

@@ -251,18 +251,18 @@ def main():
     )
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
-    parser.add_argument('--channel', default=1, type=int)
+    parser.add_argument('--channel', default=3, type=int)
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/project/OQC/train/device/0801/model_0060999.pth",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/project/OQC/train/device/0801/model_0060999.onnx",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-dd.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -281,21 +281,21 @@ def main():
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
     cfg.MODEL.DEVICE = "cuda:0"
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50  # 3 classes (data, fig, hazelnut)
-    cfg.MODEL.FCOS.NUM_CLASSES = 50
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
+    cfg.MODEL.FCOS.NUM_CLASSES = 25
 
     cfg.MODEL.RESNETS.DEPTH = 34
     cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
     # cfg.MODEL.BACKBONE.FREEZE_AT = 0
         
-    cfg.INPUT.FORMAT = 'L'
-    cfg.MODEL.PIXEL_MEAN = [59.406]
-    cfg.MODEL.PIXEL_STD = [59.32]
+    cfg.INPUT.FORMAT = 'BGR'
+    cfg.MODEL.PIXEL_MEAN = [41,41,41]
+    cfg.MODEL.PIXEL_STD = [34,34,34]
 
 
     cfg.MODEL.BASIS_MODULE.NORM = 'BN'
     cfg.freeze()
-    print("*********************",cfg.MODEL.FCOS.IN_FEATURES)
+    # print("*********************",cfg.MODEL.FCOS.IN_FEATURES)
     # -------------------------------------------------------------------------------------------------------------------------
     model = build_model(cfg)
 
@@ -343,7 +343,6 @@ def main():
     assert check,  "Simplified ONNX model could not be validated"
     onnx.save(model_simp, args.output)
     print("Done. The onnx model is saved into {}.".format(args.output))
-    
     
 
 if __name__ == "__main__":

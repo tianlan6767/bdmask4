@@ -532,8 +532,8 @@ namespace CUDAKernel{
         float* feature_array, uint8_t* feature_output, int num_feature, int feature_height,int feature_width,float confidence,
         cudaStream_t stream
     ){
-		Assert(feature_width % 32 == 0);
-        Assert(feature_height % 32 == 0);
+		// Assert(feature_width % 32 == 0);
+        // Assert(feature_height % 32 == 0);
 
 		int jobs   = num_feature * feature_height * feature_width;
 

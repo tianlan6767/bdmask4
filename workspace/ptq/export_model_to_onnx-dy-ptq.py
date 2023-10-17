@@ -9,27 +9,6 @@ python export_model_to_onnx.py \
     --config-file /home/ps/inflibs171/AdelaiDet/configs/BlendMask/R_50_3x.yaml \
     --output /media/ps/train/train_root/K11_new/train/1028/weights/1/blendmask11_level2_ep2.onnx \
     --opts MODEL.WEIGHTS /media/ps/train/train_root/K11_new/train/1028/weights/1/model_0651999.pth MODEL.FCOS.NORM "GN"
-
-
-h,w
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy \
-          --minShapes=input_image:1x1x1024x1024,bases:1x4x256x256 \
-          --optShapes=input_image:1x1x2048x2048,bases:1x4x512x512 \
-          --maxShapes=input_image:1x1x4096x5472,bases:1x4x1024x1368 \
-          --fp16 \
-          --workspace=20480 \
-          --preview=+fasterDynamicShapes0805
-
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy666.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dy-4096 \
-          --minShapes=input_image:1x1x2048x2048 \
-          --optShapes=input_image:1x1x2048x2048  \
-          --maxShapes=input_image:1x1x4096x5472  \
-          --fp16 \
-          --device=2 \
-          --workspace=10240
-
 # about the upsample/interpolate
 https://github.com/pytorch/pytorch/issues/10446
 https://github.com/pytorch/pytorch/issues/18113
@@ -47,13 +26,14 @@ import math
 import os.path as osp
 import os
 import cv2
+from glob import glob
+import imagesize
+import numpy as np
+import json
+
 # multiple versions of Adet/FCOS are installed, remove the conflict ones from the path
-try:
-    from remove_python_path import remove_path
-    remove_path()
-except:
-    import sys
-    print(sys.path)
+
+import sys
     
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
@@ -61,8 +41,20 @@ from detectron2.checkpoint import DetectionCheckpointer
 from adet.config import get_cfg
 from adet.modeling import FCOS, BlendMask
 
+import quantization.quantize as quantize
 
-def patch_blendmask(cfg, model, output_names):
+
+class SummaryTool:
+    def __init__(self, file):
+        self.file = file
+        self.data = []
+
+    def append(self, item):
+        self.data.append(item)
+        json.dump(self.data, open(self.file, "w"), indent=4)
+
+
+def patch_blendmask(cfg, model):
     def forward(self, tensor):
         images = None
         gt_instances = None
@@ -76,10 +68,12 @@ def patch_blendmask(cfg, model, output_names):
 
     model.forward = types.MethodType(forward, model)
     # output
-    output_names.extend(["bases"])
-    output_names.extend(["pred"])
+    # output_names.extend(["bases"])
+    # output_names.extend(["pred"])
     # for item in ["pred", "mask_logits"]:
     #     output_names.extend([item])
+
+
 
 
 
@@ -201,6 +195,178 @@ def patch_fcos_head(cfg, fcos_head):
 
     fcos_head.forward = types.MethodType(fcos_head_forward, fcos_head)
 
+
+def create_train_dataloader(cfg, dataset, batch_size=1, rank=-1, world_size=1, workers=8):
+    imps = glob(dataset + "/*.jpg")
+    jf = glob(dataset + "/*.json")[0]
+    if jf:
+        pass
+        
+    batch_size = min(batch_size, len(dataset))
+    nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset) if rank != -1 else None
+    train_mapper = []
+    for imp in imps:
+        image = cv2.imread(imp, -1)
+        if cfg.INPUT.FORMAT == "L":
+            image = torch.as_tensor(image.astype("float32"))
+            image = np.squeeze(image)
+        else:
+            if len(image.shape) == 2:
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            else:
+                image = image
+            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+            
+        
+        w, h = imagesize.get(imp)
+        train_mapper.append(
+            {   
+                "image":image,
+                "filename":imp,
+                "height":int(h),
+                "width":int(w),
+            }
+        )
+    return torch.utils.data.DataLoader(train_mapper,
+                                       batch_size=batch_size,
+                                       num_workers=nw,
+                                       sampler=sampler,
+                                       pin_memory=True)
+        
+        
+        
+def cmd_quantize(cfg,args, model, dataset, save_dir, eval_origin=False, eval_ptq=False, ignore_policy=None, supervision_stride=1, iters=200):
+    
+    model_name = osp.basename(cfg.MODEL.WEIGHTS).rsplit(".")[0]
+    save_ptq = osp.join(save_dir, model_name + "_ptq.pth")
+
+    save_qat = osp.join(save_dir, model_name + "_qat.pth")
+    if save_ptq and os.path.dirname(save_ptq) != "":
+        os.makedirs(os.path.dirname(save_ptq), exist_ok=True)
+
+    if save_qat and os.path.dirname(save_qat) != "":
+        os.makedirs(os.path.dirname(save_qat), exist_ok=True)
+    
+    quantize.initialize()
+    device  = torch.device(cfg.MODEL.DEVICE)
+    train_dataloader = create_train_dataloader(cfg, dataset)
+    # val_dataloader   = create_coco_val_dataloader(dataset)
+    quantize.replace_to_quantization_module(model)
+    # quantize.apply_custom_rules_to_quantizer(cfg, args, model, export_onnx)
+    quantize.calibrate_model(cfg, model, train_dataloader, device)
+
+    json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
+    summary_file = os.path.join(json_save_dir, "summary.json")
+    # summary = SummaryTool(summary_file)
+
+    # if eval_origin:
+    #     print("Evaluate Origin...")
+    #     with quantize.disable_quantization(model):
+    #         ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
+    #         summary.append(["Origin", ap])
+
+    # if eval_ptq:
+    #     print("Evaluate PTQ...")
+    #     ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
+    #     summary.append(["PTQ", ap])
+
+    if save_ptq:
+        print(f"Save ptq model to {save_ptq}")
+        # torch.save(model.state_dict(), save_ptq)
+        torch.save(model, save_ptq)
+
+    if save_qat is None:
+        print("Done as save_qat is None.")
+        return
+
+    # best_ap = 0
+    # def per_epoch(model, epoch, lr):
+
+    #     nonlocal best_ap
+    #     ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
+    #     summary.append([f"QAT{epoch}", ap])
+
+    #     if ap > best_ap:
+    #         print(f"Save qat model to {save_qat} @ {ap:.5f}")
+    #         best_ap = ap
+    #         torch.save({"model": model}, save_qat)
+
+    # def preprocess(datas):
+    #     return datas[0].to(device).float() / 255.0
+
+    # def supervision_policy():
+    #     supervision_list = []
+    #     for item in model.model:
+    #         supervision_list.append(id(item))
+
+    #     keep_idx = list(range(0, len(model.model) - 1, supervision_stride))
+    #     keep_idx.append(len(model.model) - 2)
+    #     def impl(name, module):
+    #         if id(module) not in supervision_list: return False
+    #         idx = supervision_list.index(id(module))
+    #         if idx in keep_idx:
+    #             print(f"Supervision: {name} will compute loss with origin model during QAT training")
+    #         else:
+    #             print(f"Supervision: {name} no compute loss during QAT training, that is unsupervised only and doesn't mean don't learn")
+    #         return idx in keep_idx
+    #     return impl
+
+    # quantize.finetune(
+    #     model, train_dataloader, per_epoch, early_exit_batchs_per_epoch=iters, 
+    #     preprocess=preprocess, supervision_policy=supervision_policy())
+
+
+
+def export_onnx(cfg, args, model : BlendMask, onnx_path, dynamic=False):
+    
+    input_names = ["input_image"]
+    input = torch.zeros((1, args.channel, args.height, args.width)).to(cfg.MODEL.DEVICE)
+    output_names = ["bases", "pred"]
+
+    quantize.export_onnx(
+        model,
+        input,
+        onnx_path,
+        verbose=False,
+        export_params=True,
+        input_names=input_names,
+        output_names=output_names,
+        keep_initializers_as_inputs=False,
+        opset_version=13,
+        dynamic_axes = {
+            "input_image":{2:"h", 3:"w"},
+            "bases":{2: "bases_h", 3:"bases_w"},
+            "pred":{1:"pred_nums"}
+        } if dynamic else None
+    )
+    onnx_model = onnx.load(onnx_path)
+    model_simp, check = simplify(onnx_model)
+    assert check,  "Simplified ONNX model could not be validated"
+    onnx.save(model_simp, onnx_path)
+    print("Done. The onnx model is saved into {}.".format(onnx_path))
+
+
+def cmd_export(cfg, args, model):
+    model_name = osp.basename(cfg.MODEL.WEIGHTS)
+    onnx_path = osp.join(args.output, model_name.replace(".pth", ".onnx"))
+    
+    quantize.initialize()
+    # model.load_state_dict(torch.load(cfg.MODEL.WEIGHTS, map_location="cpu"))
+    model = torch.load(cfg.MODEL.WEIGHTS, map_location="cpu")
+    model.to(cfg.MODEL.DEVICE)
+    export_onnx(cfg, args, model, onnx_path, args.dynamic)
+    # quantize.export_onnx(model, input, onnx_path, opset_version=11, 
+    #     input_names=input_names, output_names=output_names, export_params=True,
+    #     dynamic_axes = {
+    #         "input_image":{2:"h", 3:"w"},
+    #         "bases":{2: "bases_h", 3:"bases_w"},
+    #         "pred":{1:"pred_nums"}
+    #     } if dynamic else None
+    # )
+    # print(f"Save onnx to {onnx_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Export model to the onnx format")
     parser.add_argument(
@@ -212,17 +378,19 @@ def main():
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
     parser.add_argument('--channel', default=3, type=int)
-    
+    parser.add_argument('--dynamic', default=False, type=bool)
+    parser.add_argument('--ptq', default=True, type=bool)
     parser.add_argument(
         "--weights",
         default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
+        # default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826_ptq.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-3.onnx",
-        metavar="FILE",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT",
+        metavar="path",
         help="path to the output onnx file",
     )
     parser.add_argument(
@@ -231,7 +399,6 @@ def main():
         default=[],
         nargs=argparse.REMAINDER,
     )
-
     args = parser.parse_args()
     # train.py -----------------------------------------------------------------------------------------
     cfg = get_cfg()
@@ -239,17 +406,13 @@ def main():
     config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:3"
+    cfg.MODEL.DEVICE = "cuda:1"
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
     cfg.MODEL.FCOS.NUM_CLASSES = 25
-
+    cfg.DATALOADER.NUM_WORKERS = 0
     cfg.MODEL.RESNETS.DEPTH = 34
     cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
     cfg.MODEL.BACKBONE.FREEZE_AT = 0
-        
-    # cfg.INPUT.FORMAT = 'L'
-    # cfg.MODEL.PIXEL_MEAN = [59.406]
-    # cfg.MODEL.PIXEL_STD = [59.32]
     
     cfg.INPUT.FORMAT = 'BGR'
     cfg.MODEL.PIXEL_MEAN = [41,41,41]
@@ -262,27 +425,14 @@ def main():
     model = build_model(cfg)
 
 
-    model.eval()
+    # model.eval()
     model.to(cfg.MODEL.DEVICE)
+    if args.ptq:
+        checkpointer = DetectionCheckpointer(model)
+        _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
 
-    checkpointer = DetectionCheckpointer(model)
-    _ = checkpointer.load(cfg.MODEL.WEIGHTS)
-
-    height, width = 2048, 2048
-    if args.width > 0:
-        width = args.width
-    if args.height > 0:
-        height = args.height
-    input_names = ["input_image"]
-    
-    # 加载图像
-    # im = cv2.imread(r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/2048.jpg", 0)
-    
-    dummy_input = torch.zeros((1, args.channel, height, width)).to(cfg.MODEL.DEVICE)
-
-    output_names = []
     if isinstance(model, BlendMask):
-        patch_blendmask(cfg, model, output_names)
+        patch_blendmask(cfg, model)
 
     if hasattr(model, 'proposal_generator'):
         if isinstance(model.proposal_generator, FCOS):
@@ -291,30 +441,17 @@ def main():
             
     if not osp.exists(osp.dirname(args.output)):
         os.makedirs(osp.dirname(args.output), exist_ok=True)
-    torch.onnx.export(
-        model,
-        dummy_input,
-        args.output,
-        verbose=False,
-        export_params=True,
-        input_names=input_names,
-        output_names=output_names,
-        keep_initializers_as_inputs=False,
-        opset_version=11,
-        dynamic_axes = {
-            "input_image":{2:"h", 3:"w"},
-            "bases":{2: "bases_h", 3:"bases_w"},
-            "pred":{1:"pred_nums"}
-        }
-    )
-
-    onnx_model = onnx.load(args.output)
-    model_simp, check = simplify(onnx_model)
-    assert check,  "Simplified ONNX model could not be validated"
-    onnx.save(model_simp, args.output)
-    print("Done. The onnx model is saved into {}.".format(args.output))
-    
     
 
+    train_dataset = r"/media/ps/data/train/LQ/project/OQC/train/0923/add-ngs"
+    # val_dataset = r"/media/ps/data/train/LQ/project/OQC/train/0922/add/ngs2"
+    
+
+    # cmd_quantize(cfg, args, model, train_dataset, args.output)
+    
+    export_onnx(cfg, args, model, osp.join(args.output, "static.onnx"))
+    
+    # cmd_export(cfg, args, model)
+    
 if __name__ == "__main__":
     main()
