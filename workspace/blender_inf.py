@@ -57,18 +57,26 @@ def generate_grid(boxes):
     N = 1
     img_y = torch.arange(y0_int, y1_int, dtype=torch.float32) + 0.5
     img_x = torch.arange(x0_int, x1_int, dtype=torch.float32) + 0.5
-    print(img_y, img_x)
+    print(img_y.shape, img_x.shape)
     img_y = (img_y - y0) / (y1 - y0) * 2 - 1
     img_x = (img_x - x0) / (x1 - x0) * 2 - 1
     # img_x, img_y have shapes (N, w), (N, h)
+    print("2222222222222222222222222222222222222222222222222222222222222")
+    print(img_y)
+    print(img_x)
+    print("2222222222222222222222222222222222222222222222222222222222222")
 
     gx = img_x[:, None, :].expand(N, int(img_y.size(1)), int(img_x.size(1)))
     gy = img_y[:, :, None].expand(N, int(img_y.size(1)), int(img_x.size(1)))
+    print("0-------",gx.shape)
+    print("0-------", gy.shape)
+    
+    
     grid = torch.stack([gx, gy], dim=3)
     return grid
 
 
-def do_paste_mask(masks, boxes, grid_box):
+def do_paste_mask(masks, boxes, grid_box=None):
 
     # device = masks.device
     
@@ -89,22 +97,22 @@ def do_paste_mask(masks, boxes, grid_box):
     # grid = torch.stack([gx, gy], dim=3)
     
     
-    # device = masks.device
-    # x0, y0, x1, y1 = torch.split(boxes, 1, dim=1)  # each is Nx1
-    # x0_int, y0_int = int(x0), int(y0)
-    # x1_int, y1_int = int(x1), int(y1)
+    device = masks.device
+    x0, y0, x1, y1 = torch.split(boxes, 1, dim=1)  # each is Nx1
+    x0_int, y0_int = int(x0), int(y0)
+    x1_int, y1_int = int(x1), int(y1)
 
-    # N = int(masks.shape[0]) 
+    N = int(masks.shape[0]) 
 
-    # img_y = torch.arange(y0_int, y1_int, device=device, dtype=torch.float32) + 0.5
-    # img_x = torch.arange(x0_int, x1_int, device=device, dtype=torch.float32) + 0.5
-    # img_y = (img_y - y0) / (y1 - y0) * 2 - 1
-    # img_x = (img_x - x0) / (x1 - x0) * 2 - 1
-    # # img_x, img_y have shapes (N, w), (N, h)
+    img_y = torch.arange(y0_int, y1_int, device=device, dtype=torch.float32) + 0.5
+    img_x = torch.arange(x0_int, x1_int, device=device, dtype=torch.float32) + 0.5
+    img_y = (img_y - y0) / (y1 - y0) * 2 - 1
+    img_x = (img_x - x0) / (x1 - x0) * 2 - 1
+    # img_x, img_y have shapes (N, w), (N, h)
 
-    # gx = img_x[:, None, :].expand(N, int(img_y.size(1)), int(img_x.size(1)))
-    # gy = img_y[:, :, None].expand(N, int(img_y.size(1)), int(img_x.size(1)))
-    # grid = torch.stack([gx, gy], dim=3)
+    gx = img_x[:, None, :].expand(N, int(img_y.size(1)), int(img_x.size(1)))
+    gy = img_y[:, :, None].expand(N, int(img_y.size(1)), int(img_x.size(1)))
+    grid_box = torch.stack([gx, gy], dim=3)
     
     img_masks = F.grid_sample(masks, grid_box.to(masks.dtype), align_corners=False)
     
@@ -138,7 +146,7 @@ def blender(bases, box, feat):
     pred_mask_logits = merge_bases(rois, top_feat).sigmoid()
     pred_mask_logits = pred_mask_logits.view(
     -1, 1, 56, 56)
-    # pred_mask_logits = do_paste_mask(pred_mask_logits, box_pred[:,1:], int(b_h*4), int(b_w*4))
+    pred_mask_logits = do_paste_mask(pred_mask_logits, box_pred[:,1:])
     # pred_mask_logits = pred_mask_logits.view(-1, int(b_h*4), int(b_w*4))
     # pred_mask_logits = pred_mask_logits.view(-1, int(b_h), int(b_w))
     return pred_mask_logits[0]
@@ -190,15 +198,19 @@ def blender_noroialigned_nointerpolate(rois, box, coeffs):
 
 if __name__=="__main__":
     np.set_printoptions(suppress=True)
-    base_input_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/base_input"
-    box_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/box_input"
-    feat_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/top_feat_input"  
+    base_input_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/base_input"
+    box_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/box_input"
+    feat_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/top_feat_input"  
     feat_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/feat_resize"
     output_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/output-nogrid-sampler"
     roi_align_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/top_input-roialigned"
     feat_output_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/feat_out_device"
     mask_pred_f   = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/mask_pred_device"
     grid_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/box_grid_device"
+    grid_w_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/grid_w_device"
+    grid_h_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/grid_h_device"
+    
+    box_mask_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/box_mask_device"
     # imgs = glob(r"/media/ps/data/train/LQ/LQ/bdmask/workspace/inf" + "/*.jpg")
     # for im in imgs:
     #     imn = "+" + osp.basename(im)
@@ -222,17 +234,26 @@ if __name__=="__main__":
     feat_resize = torch.tensor(load_tensor(feat_device_f))
     mask_pred = torch.tensor(load_tensor(mask_pred_f))
     grid_device = torch.tensor(load_tensor(grid_device_f))
-    print(base.shape, box.shape, feat.shape, output.shape, box[:,1:].shape,  box[:,1:], roi_aligned.shape,feat_resize.shape, mask_pred.shape,grid_device.shape,grid_device.shape)
+    grid_w_device = torch.tensor(load_tensor(grid_w_device_f))
+    grid_h_device = torch.tensor(load_tensor(grid_h_device_f))
+    box_mask_device = torch.tensor(load_tensor(box_mask_device_f))
+    print("***************************************************************")
+    print(grid_h_device.shape, grid_w_device.shape)
+    print(grid_h_device)
+    print(grid_w_device)
+    print("***************************************************************")
+    print(base.shape, box.shape, feat.shape, output.shape, box[:,1:].shape,  box[:,1:], roi_aligned.shape,feat_resize.shape, mask_pred.shape,grid_device.shape,grid_device.shape, box_mask_device.shape)
     # mask_noaligned = blender_noroialigned(roi_aligned, box, feat)
     mask_noaligned_no_interpolate = blender_noroialigned_nointerpolate(roi_aligned, box, feat_output)
     
 
-    py_grid = generate_grid(box[:,1:])
-    print(grid_device.shape, py_grid.shape)
-    print(grid_device)
-    print(py_grid)
+    # py_grid = generate_grid(box[:,1:])
+    # print(grid_device.shape, py_grid.shape)
+    # print(grid_device)
+    # print(py_grid)
+    # print(box_mask_device.numpy())
     # start.record()
-    mask = do_paste_mask(output, box[:,1:], grid_device)
+    # mask = do_paste_mask(output, box[:,1:], grid_device)
     
     # base_input_f = r"/media/ps/data/train/LQ/LQ/bdmask4/workspace/mask_data/pdata/bases.data"
     # box_input_f = r"/media/ps/data/train/LQ/LQ/bdmask4/workspace/mask_data/pdata/boxes.data"
@@ -251,18 +272,18 @@ if __name__=="__main__":
     
     # masks = blender(base, box_feat[0].unsqueeze(0))
 
-    # masks = blender(base, box, feat)
+    masks = blender(base, box, feat)
     # end.record()
     # torch.cuda.synchronize()
     # print(start.elapsed_time(end))
     # print(masks.shape)
     
-    masks = mask.squeeze().numpy()
+    masks = masks.squeeze().numpy()
     masks = np.where(masks > 0.5, 255, 0)
     # for idx, m in enumerate(masks):
     #     print(m.shape)
     #     if np.count_nonzero(m):
-    cv2.imwrite("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/111/image_mask2_noaligned_nointerpolate-ddddd.jpg", masks)
+    cv2.imwrite("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/orig.jpg", masks)
     print("------------")
     
     
