@@ -48,7 +48,7 @@
 //     torch::Tensor gy = img_y.unsqueeze(2).expand({N, img_y.size(1), img_x.size(1)});
 //     torch::Tensor grid = torch::stack({gx, gy}, 3);
     
-//     torch::Tensor img_masks = torch::grid_sampler_2d(masks, grid.to(masks.dtype()), 0, 0, false); // align_corners=false
+    // torch::Tensor img_masks = torch::grid_sampler_2d(masks, grid.to(masks.dtype()), 0, 0, false); // align_corners=false
     
 //     return img_masks;
 // }
