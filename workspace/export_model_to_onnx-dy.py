@@ -187,17 +187,17 @@ def main():
     )
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
-    parser.add_argument('--channel', default=1, type=int)
+    parser.add_argument('--channel', default=3, type=int)
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016.pth",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016.onnx",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-dy.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -228,8 +228,8 @@ def main():
     # cfg.MODEL.PIXEL_STD = [59.32]
     
     cfg.INPUT.FORMAT = 'L'
-    cfg.MODEL.PIXEL_MEAN = [41]
-    cfg.MODEL.PIXEL_STD = [34]
+    cfg.MODEL.PIXEL_MEAN = [41, 41, 41]
+    cfg.MODEL.PIXEL_STD = [34, 34, 34]
 
 
     cfg.MODEL.BASIS_MODULE.NORM = 'BN'
@@ -280,11 +280,11 @@ def main():
         output_names=output_names,
         keep_initializers_as_inputs=False,
         opset_version=11,
-        # dynamic_axes = {
-        #     "input_image":{2:"h", 3:"w"},
-        #     "bases":{2: "bases_h", 3:"bases_w"},
-        #     "pred":{1:"pred_nums"}
-        # }
+        dynamic_axes = {
+            "input_image":{2:"h", 3:"w"},
+            "bases":{2: "bases_h", 3:"bases_w"},
+            "pred":{1:"pred_nums"}
+        }
     )
 
     onnx_model = onnx.load(args.output)

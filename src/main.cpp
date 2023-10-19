@@ -25,24 +25,24 @@ int main(){
     // string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model-FCOS-Q1-2.trtmode)";
     // string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model_blender-Q1.trtmodel)";
 
-    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016)";
-    string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/mask)";
+    string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-dy)";
+    string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/blender-dy)";
 
 
     BdmApp bdmapp;
     shared_ptr<Fcos::Infer> fcos1 = nullptr;
     shared_ptr<Blender::Infer> blender1 = nullptr;
 
-    int device_id1 = 2;
+    int device_id1 = 0;
 
-    float mean[] = {50};
-    float std[] = {48};
+    float mean[] = {41,41,41};
+    float std[] = {34,34,34};
 
 
     bool result1 = bdmapp.bdminit(fcos1, blender1, fcos_engine_path, blend_engine_path, mean, std, device_id1);
 
-    string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/imgs/*.jpg)";
-    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf)";
+    string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/imgs/*.jpg)";
+    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf333)";
 
     vector<cv::String> files_;
     files_.reserve(10000);
@@ -72,7 +72,7 @@ int main(){
                 auto caption   = cv::format("%s %.2f", name, sqrt(box.confidence));
                 int text_width = cv::getTextSize(caption, 0, 1, 2, nullptr).width + 10;
 
-                printf("%d-%f-%f-%f-%f-%f\n", box.class_label, box.left, box.top, box.right, box.bottom, sqrt(box.confidence));
+                // printf("%d-%f-%f-%f-%f-%f\n", box.class_label, box.left, box.top, box.right, box.bottom, sqrt(box.confidence));
                 cv::rectangle(image, cv::Point(box.left-3, box.top-33), cv::Point(box.left + text_width, box.top), color, -1);
                 cv::putText(image, caption, cv::Point(box.left, box.top-5), 0, 1, cv::Scalar::all(0), 2, 16);
             }
