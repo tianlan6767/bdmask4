@@ -33,7 +33,7 @@ int main(){
     shared_ptr<Fcos::Infer> fcos1 = nullptr;
     shared_ptr<Blender::Infer> blender1 = nullptr;
 
-    int device_id1 = 2;
+    int device_id1 = 3;
 
     float mean[] = {50};
     float std[] = {48};
@@ -42,7 +42,7 @@ int main(){
     bool result1 = bdmapp.bdminit(fcos1, blender1, fcos_engine_path, blend_engine_path, mean, std, device_id1);
 
     string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/imgs/*.jpg)";
-    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf)";
+    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/inf)";
 
     vector<cv::String> files_;
     files_.reserve(10000);
@@ -52,7 +52,7 @@ int main(){
     vector<float> avg_times1;
 
     assert(result1);
-    int num_imp = 0;
+    int num_imp = 1;
     int noc = 1;
     while(noc){
         for(int im_idx=0; im_idx < files.size(); ++im_idx){
@@ -65,7 +65,8 @@ int main(){
 
             cv::cvtColor(image, image, cv::COLOR_GRAY2BGR);
             // 绘制到图片上
-            for(auto & box : defect_res.boxes){
+            int idx = 0;
+            for(auto & box : defect_res){
                 cv::Scalar color(0, 255, 0);
                 cv::rectangle(image, cv::Point(box.left, box.top), cv::Point(box.right, box.bottom), color, 3);
                 auto name      = cocolabels[box.class_label];
@@ -75,23 +76,23 @@ int main(){
                 printf("%d-%f-%f-%f-%f-%f\n", box.class_label, box.left, box.top, box.right, box.bottom, sqrt(box.confidence));
                 cv::rectangle(image, cv::Point(box.left-3, box.top-33), cv::Point(box.left + text_width, box.top), color, -1);
                 cv::putText(image, caption, cv::Point(box.left, box.top-5), 0, 1, cv::Scalar::all(0), 2, 16);
+
+
+                if (box.seg) {
+                    string nimp_result_mask = dst + "/" + path.stem().string() +"_mask_" + to_string(idx) +".jpg";
+                    cv::imwrite(nimp_result_mask,
+                                cv::Mat(box.seg->height, box.seg->width, CV_8U, box.seg->data));
+                    idx++;
+                    }
             }
 
             printf("***********第%d張圖片---当前%s, 图片有%d个缺陷, 当前推理耗时:%f***********\n", num_imp,
-                        path.stem().string().c_str(), defect_res.labels.size(), end_time1 - begin_time1);
+                        path.stem().string().c_str(), defect_res.size(), end_time1 - begin_time1);
+
+            cv::imwrite(nimp_result, image);
             ++num_imp;
 
-            int idx=0;
-            for(auto& m :defect_res.masks){
-                
-                string nimp_result_mask = dst + "/" + path.stem().string() +"_mask_" + to_string(idx) +".jpg";
-                cv::imwrite(nimp_result_mask, m);
-                ++idx;
-            }
-            // 保存结果图，并输出结果
-            cv::imwrite(nimp_result, image);
             avg_times1.emplace_back(end_time1 - begin_time1);
-
         }
         noc--;
     }

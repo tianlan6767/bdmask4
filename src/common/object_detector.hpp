@@ -31,8 +31,6 @@ namespace ObjectDetector
         vector<Obj> boxes{};
     };
 
-
-
     struct Base {
         int kWidth = 768;
         int kHeight = 1024;

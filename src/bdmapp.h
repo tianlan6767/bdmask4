@@ -13,7 +13,7 @@ public:
                  float mean[],
                  float std[],
                  int device_id =0);
-    ObjectDetector::Defect bdmapp(shared_ptr<Fcos::Infer> fcos, 
+    Fcos::BoxArray bdmapp(shared_ptr<Fcos::Infer> fcos, 
                                   shared_ptr<Blender::Infer> blender,
                                   cv::Mat& image);
 

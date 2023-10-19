@@ -15,29 +15,19 @@ namespace Fcos{
     using namespace std;
 
 
-    void decode_kernel_invoker(
-        float* predict, int num_bboxes, int num_classes, float confidence_threshold, 
-        float* invert_affine_matrix, float* parray,
-        int max_objects, cudaStream_t stream
-    );
+    InstanceSegmentMap::InstanceSegmentMap(int width, int height) {
+        this->width = width;
+        this->height = height;
+        checkCudaRuntime(cudaMallocHost(&this->data, width * height));
+    }
 
-    void nms_kernel_invoker(
-        float* parray, float nms_threshold, int max_objects, cudaStream_t stream
-    );
-
-    void recount_box(float* parray, int h, int w, int max_objects, cudaStream_t stream);
-
-    int calculate(int h, int w){
-        int array[] = {8, 16, 32, 64, 128};
-        int result = 0;
-        auto feature_num = [&](int value) {
-            
-            return static_cast<int>(std::ceil(static_cast<double>(h) / value) * std::ceil(static_cast<double>(w) / value));
-        };
-        for(int i=0;i < sizeof(array)/ sizeof(array[0]); i++){
-            result += feature_num(array[i]);
+    InstanceSegmentMap::~InstanceSegmentMap() {
+        if (this->data) {
+            checkCudaRuntime(cudaFreeHost(this->data));
+            this->data = nullptr;
         }
-        return result;
+        this->width = 0;
+        this->height = 0;
     }
 
     struct AffineMatrix{
@@ -63,10 +53,52 @@ namespace Fcos{
         }
     };
 
+
+
+    void generate_grid(float* box, int N, int height, int width, float* box_grid, cudaStream_t stream);
+    
+    void decode_roialign(float* bottom_data,float spatial_scale, int channels, int height, int width, int pooled_height, int pooled_width, float sampling_ratio, float* bottom_rois,
+        float* top_data, bool aligned, cudaStream_t stream);
+
+    void decode_interpolate(float* src, int channels, int src_height, int src_width, float* dst, int dst_height, int dst_width,float scale_factor,
+            cudaStream_t stream);
+    void decode_softmax(float* input, int height, int width, cudaStream_t stream);
+
+    void decode_mul_sum_sigmod(float * top_data, float * feat_out_tensor, int height, int width,  float*mask_pred, cudaStream_t stream);
+
+    void decode_grid_sample(float* mask, int mask_height, int mask_width, float* box_grid,  int grid_height, int grid_width, uint8_t* box_mask, cudaStream_t stream);
+
+    void decode_kernel_invoker(
+        float* predict, int num_bboxes, int num_classes, float confidence_threshold, 
+        float* invert_affine_matrix, float* parray,
+        int max_objects, cudaStream_t stream
+    );
+
+    void nms_kernel_invoker(
+        float* parray, float nms_threshold, int max_objects, cudaStream_t stream
+    );
+
+    void recount_box(float* parray, int h, int w, int max_objects, cudaStream_t stream);
+
+    int calculate(int h, int w){
+        int array[] = {8, 16, 32, 64, 128};
+        int result = 0;
+        auto feature_num = [&](int value) {
+            
+            return static_cast<int>(std::ceil(static_cast<double>(h) / value) * std::ceil(static_cast<double>(w) / value));
+        };
+        for(int i=0;i < sizeof(array)/ sizeof(array[0]); i++){
+            result += feature_num(array[i]);
+        }
+        return result;
+    }
+
+
+
     using ControllerImpl = InferController
     <
         Mat,                    // input
-        ResultArray,              // output
+        BoxArray,              // output
         tuple<string, int>,     // start param
         AffineMatrix            // additional
     >;
@@ -103,9 +135,22 @@ namespace Fcos{
 
             const int MAX_IMAGE_BBOX = 1024;
             const int NUM_BOX_ELEMENT = 792;    // left, top, right, bottom, confidence, keepflag(1keep,0ignore), num_index, top_feat(784)
+            const int FEAT_DIM        = 14;
+
+            const int MASK_DIM        = 56;
             TRT::Tensor affin_matrix_device(TRT::DataType::Float);
             TRT::Tensor output_array_device(TRT::DataType::Float);
             TRT::Tensor output_bases_device(TRT::DataType::Float);
+            TRT::Tensor box_output_device(TRT::DataType::Float);
+            
+            TRT::Tensor box_device(TRT::DataType::Float);
+            TRT::Tensor feat_device(TRT::DataType::Float);
+            TRT::Tensor feat_out_device(TRT::DataType::Float);
+            TRT::Tensor top_device(TRT::DataType::Float);
+            TRT::Tensor mask_pred_device(TRT::DataType::Float);
+            TRT::Tensor box_grid_device(TRT::DataType::Float);
+            TRT::Tensor box_mask_device(TRT::DataType::UInt8);
+
             int max_batch_size = engine->get_max_batch_size();
             auto input         = engine->input();
             auto output        = engine->output(1);
@@ -128,6 +173,15 @@ namespace Fcos{
             // 这里的 1 + MAX_IMAGE_BBOX结构是，counter + bboxes ...
             output_array_device.resize(max_batch_size, 1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT).to_gpu(); 
             output_bases_device.resize(max_batch_size, bases_out->size(1)*bases_out->size(2)*bases_out->size(3)).to_gpu();
+
+            // mask参数
+            // box_output_device.resize(max_batch_size, 1 + MAX_IMAGE_BBOX * 8).to_gpu();  // counter, left, right, top, bottom, conf, label, box_h, box_w
+            top_device.resize(max_batch_size, bases_out->size(1), MASK_DIM, MASK_DIM).to_gpu();
+            feat_out_device.resize(max_batch_size, bases_out->size(1), MASK_DIM, MASK_DIM).to_gpu();
+            mask_pred_device.resize(MASK_DIM, MASK_DIM).to_gpu();
+
+            box_device.resize(max_batch_size, 5); // num_batch, left, top, right, bottom
+            feat_device.resize(max_batch_size, bases_out->size(1), FEAT_DIM, FEAT_DIM).to_gpu();
 
             vector<Job> fetch_jobs;
             while(get_jobs_and_wait(fetch_jobs, max_batch_size)){
@@ -166,41 +220,97 @@ namespace Fcos{
                     }
                 }
 
+                // compute mask
                 output_array_device.to_cpu();
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
-                    Base base_out;
-                    base_out.kHeight = bases_out->size(2);
-                    base_out.kWidth = bases_out->size(3);
-                    const int kDataSize =  bases_out->size(1)*base_out.kHeight*base_out.kWidth;
-                    base_out.base = shared_ptr<float>(new float[kDataSize], std::default_delete<float[]>());
-
                     float* parray = output_array_device.cpu<float>(ibatch);
-                    auto bases_out       = engine->output(0);
-                    float* bases_parray = bases_out->cpu<float>(ibatch);
                     int count     = min(MAX_IMAGE_BBOX, (int)*parray);
+                    
+                    auto bases_out       = engine->output(0);
+                    float* base_tensor = bases_out->gpu<float>(ibatch);
+
                     auto& job     = fetch_jobs[ibatch];
                     auto& image_based_boxes   = job.output;
-                    memcpy(base_out.base.get(), bases_parray, kDataSize*sizeof(float));
-                    image_based_boxes.BasesArray.emplace_back(base_out);
-                    
                     for(int i = 0; i < count; ++i){
                         float* pbox  = parray + 1 + i * NUM_BOX_ELEMENT;
-                        int label    = pbox[5];
                         int keepflag = pbox[6];
                         if(keepflag == 1){
-                            Obj obj;
-                            obj.left       = pbox[0];
-                            obj.top        = pbox[1];
-                            obj.right      = pbox[2];
-                            obj.bottom     = pbox[3];
-                            obj.confidence = pbox[4];
-                            obj.class_label = pbox[5];
-                            memcpy(obj.top_feat, pbox+7, sizeof(obj.top_feat)); 
-                            image_based_boxes.BoxArray.emplace_back(obj);
+                            Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], pbox[5]);
+                            int box_mask_height = pbox[3] - pbox[1] + 0.5f;
+                            int box_mask_width  = pbox[2] - pbox[0] + 0.5f;
+                            box_grid_device.resize(1, box_mask_height, box_mask_width, 2);
+                            box_mask_device.resize(box_mask_height, box_mask_width);
+                            float* box_tensor = box_device.gpu<float>();
+                            float* feat_tensor = feat_device.gpu<float>();
+                            float* box_grid = box_grid_device.gpu<float>();
+                            float* top_data = top_device.gpu<float>();
+                            float* feat_out_tensor = feat_out_device.gpu<float>();
+                            float* mask_pred       = mask_pred_device.gpu<float>();
+                            uint8_t* box_mask = box_mask_device.gpu<uint8_t>();
+                            result_object_box.seg =
+                                make_shared<InstanceSegmentMap>(box_mask_width, box_mask_height);
+                            uint8_t* mask_out_host = result_object_box.seg->data;
+                            checkCudaRuntime(cudaMemcpyAsync(box_tensor+1, pbox, 4 * sizeof(float), cudaMemcpyHostToDevice, stream_));
+                            checkCudaRuntime(cudaMemcpyAsync(feat_tensor, pbox + 7, 784 * sizeof(float), cudaMemcpyHostToDevice, stream_));
+                            float* box_tensor_cpu = box_device.cpu<float>();
+
+                            
+                            // 调用 CUDA 核函数  
+                            generate_grid(box_tensor, 1, box_mask_height, box_mask_width, box_grid, stream_);
+                            decode_roialign(base_tensor, 0.25f, bases_out->size(1), bases_out->size(2), bases_out->size(3), MASK_DIM, MASK_DIM, 1, box_tensor, top_data, true, stream_);
+                            decode_interpolate(feat_tensor, 4, FEAT_DIM, FEAT_DIM, feat_out_tensor, 56, 56, 0.25, stream_);
+                            decode_softmax(feat_out_tensor, MASK_DIM, MASK_DIM, stream_);
+                            decode_mul_sum_sigmod(top_data, feat_out_tensor, 56, 56,  mask_pred, stream_);
+                            decode_grid_sample(mask_pred, MASK_DIM, MASK_DIM, box_grid,  box_mask_height, box_mask_width, box_mask, stream_);
+                            checkCudaRuntime(cudaMemcpyAsync(mask_out_host, box_mask,
+                                           box_mask_height * box_mask_width * sizeof(uint8_t),
+                                           cudaMemcpyDeviceToHost, stream_));
+
+                            image_based_boxes.emplace_back(result_object_box);
                         }
                     }
                     job.pro->set_value(image_based_boxes);
                 }
+
+
+
+
+                //后处理保存图片
+                // output_array_device.to_cpu();
+                // for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
+                //     Base base_out;
+                //     base_out.kHeight = bases_out->size(2);
+                //     base_out.kWidth = bases_out->size(3);
+                //     const int kDataSize =  bases_out->size(1)*base_out.kHeight*base_out.kWidth;
+                //     base_out.base = shared_ptr<float>(new float[kDataSize], std::default_delete<float[]>());
+
+                //     float* parray = output_array_device.cpu<float>(ibatch);
+                //     auto bases_out       = engine->output(0);
+                //     float* bases_parray = bases_out->cpu<float>(ibatch);
+                //     int count     = min(MAX_IMAGE_BBOX, (int)*parray);
+                //     auto& job     = fetch_jobs[ibatch];
+                //     auto& image_based_boxes   = job.output;
+                //     memcpy(base_out.base.get(), bases_parray, kDataSize*sizeof(float));
+                //     image_based_boxes.BasesArray.emplace_back(base_out);
+                    
+                //     for(int i = 0; i < count; ++i){
+                //         float* pbox  = parray + 1 + i * NUM_BOX_ELEMENT;
+                //         int label    = pbox[5];
+                //         int keepflag = pbox[6];
+                //         if(keepflag == 1){
+                //             Obj obj;
+                //             obj.left       = pbox[0];
+                //             obj.top        = pbox[1];
+                //             obj.right      = pbox[2];
+                //             obj.bottom     = pbox[3];
+                //             obj.confidence = pbox[4];
+                //             obj.class_label = pbox[5];
+                //             memcpy(obj.top_feat, pbox+7, sizeof(obj.top_feat)); 
+                //             image_based_boxes.BoxArray.emplace_back(obj);
+                //         }
+                //     }
+                //     job.pro->set_value(image_based_boxes);
+                // }
                 fetch_jobs.clear();
             }
             stream_ = nullptr;
@@ -269,11 +379,11 @@ namespace Fcos{
             return true;
         }
 
-        virtual vector<shared_future<ResultArray>> commits(const vector<Mat>& images) override{
+        virtual vector<shared_future<BoxArray>> commits(const vector<Mat>& images) override{
             return ControllerImpl::commits(images);
         }
 
-        virtual std::shared_future<ResultArray> commit(const Mat& image) override{
+        virtual std::shared_future<BoxArray> commit(const Mat& image) override{
             return ControllerImpl::commit(image);
         }
 
