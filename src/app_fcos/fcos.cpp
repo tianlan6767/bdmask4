@@ -235,6 +235,10 @@ namespace Fcos{
                         float* pbox  = parray + 1 + i * NUM_BOX_ELEMENT;
                         int keepflag = pbox[6];
                         if(keepflag == 1){
+                            pbox[0] = max(0.f, min(float(input_width_), pbox[0]));
+                            pbox[2] = max(0.f, min(float(input_width_), pbox[2]));
+                            pbox[1] = max(0.f, min(float(input_height_), pbox[1]));
+                            pbox[3] = max(0.f, min(float(input_height_), pbox[3]));
                             Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], pbox[5]);
                             int box_mask_height = pbox[3] - pbox[1] + 0.5f;
                             int box_mask_width  = pbox[2] - pbox[0] + 0.5f;
@@ -258,9 +262,9 @@ namespace Fcos{
                             // 调用 CUDA 核函数  
                             generate_grid(box_tensor, 1, box_mask_height, box_mask_width, box_grid, stream_);
                             decode_roialign(base_tensor, 0.25f, bases_out->size(1), bases_out->size(2), bases_out->size(3), MASK_DIM, MASK_DIM, 1, box_tensor, top_data, true, stream_);
-                            decode_interpolate(feat_tensor, 4, FEAT_DIM, FEAT_DIM, feat_out_tensor, 56, 56, 0.25, stream_);
+                            decode_interpolate(feat_tensor, bases_out->size(1), FEAT_DIM, FEAT_DIM, feat_out_tensor, MASK_DIM, MASK_DIM, 0.25f, stream_);
                             decode_softmax(feat_out_tensor, MASK_DIM, MASK_DIM, stream_);
-                            decode_mul_sum_sigmod(top_data, feat_out_tensor, 56, 56,  mask_pred, stream_);
+                            decode_mul_sum_sigmod(top_data, feat_out_tensor, MASK_DIM, MASK_DIM,  mask_pred, stream_);
                             decode_grid_sample(mask_pred, MASK_DIM, MASK_DIM, box_grid,  box_mask_height, box_mask_width, box_mask, stream_);
                             checkCudaRuntime(cudaMemcpyAsync(mask_out_host, box_mask,
                                            box_mask_height * box_mask_width * sizeof(uint8_t),

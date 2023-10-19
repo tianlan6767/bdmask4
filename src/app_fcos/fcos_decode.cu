@@ -61,7 +61,6 @@ namespace Fcos{
         for(int i = 0; i < 784; ++i){
             *pout_item++ = *(pitem+i+1+num_classes);
         }
-
     }
 
     static __device__ float box_iou(
@@ -352,7 +351,6 @@ namespace Fcos{
         if (idx >= jobs) return;
         float grid_x = (mask_width / 2.0f) * ((box_grid[idx*2]) + 1) ;
         float grid_y = (mask_height / 2.0f) * (box_grid[idx*2 + 1] + 1);
-        // printf("%d-%f-%f-%f\n", idx, grid_y, grid_x, (bilinear_interpolate(mask, mask_height, mask_width, grid_y, grid_x, idx)));
         box_mask[idx] = (bilinear_interpolate(mask, mask_height, mask_width, grid_y, grid_x, idx)) > 0.5f ? 255 : 0;
     }
 

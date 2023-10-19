@@ -12,12 +12,6 @@
 // #include <torch/torch.h>
 // #include <iostream>
 
-
-
-
-
-
-
 // std::vector<torch::Tensor> splitBoxes(const torch::Tensor& boxes) {
 //     std::vector<torch::Tensor> split_tensors = torch::split(boxes, 1, 1); // each is Nx1
 //     return split_tensors;

@@ -6,13 +6,11 @@
 #include <string>
 #include <future>
 #include <opencv2/opencv.hpp>
-#include "../common/object_detector.hpp"
 
 namespace Fcos
 {
 
     using namespace std;
-    using namespace ObjectDetector;
 
     enum class NMSMethod : int{
         CPU = 0,         // General, for estimate mAP
