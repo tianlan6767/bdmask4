@@ -269,52 +269,12 @@ namespace Fcos{
                             checkCudaRuntime(cudaMemcpyAsync(mask_out_host, box_mask,
                                            box_mask_height * box_mask_width * sizeof(uint8_t),
                                            cudaMemcpyDeviceToHost, stream_));
-
+                            cudaStreamSynchronize(stream_);
                             image_based_boxes.emplace_back(result_object_box);
                         }
                     }
                     job.pro->set_value(image_based_boxes);
                 }
-
-
-
-
-                //后处理保存图片
-                // output_array_device.to_cpu();
-                // for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
-                //     Base base_out;
-                //     base_out.kHeight = bases_out->size(2);
-                //     base_out.kWidth = bases_out->size(3);
-                //     const int kDataSize =  bases_out->size(1)*base_out.kHeight*base_out.kWidth;
-                //     base_out.base = shared_ptr<float>(new float[kDataSize], std::default_delete<float[]>());
-
-                //     float* parray = output_array_device.cpu<float>(ibatch);
-                //     auto bases_out       = engine->output(0);
-                //     float* bases_parray = bases_out->cpu<float>(ibatch);
-                //     int count     = min(MAX_IMAGE_BBOX, (int)*parray);
-                //     auto& job     = fetch_jobs[ibatch];
-                //     auto& image_based_boxes   = job.output;
-                //     memcpy(base_out.base.get(), bases_parray, kDataSize*sizeof(float));
-                //     image_based_boxes.BasesArray.emplace_back(base_out);
-                    
-                //     for(int i = 0; i < count; ++i){
-                //         float* pbox  = parray + 1 + i * NUM_BOX_ELEMENT;
-                //         int label    = pbox[5];
-                //         int keepflag = pbox[6];
-                //         if(keepflag == 1){
-                //             Obj obj;
-                //             obj.left       = pbox[0];
-                //             obj.top        = pbox[1];
-                //             obj.right      = pbox[2];
-                //             obj.bottom     = pbox[3];
-                //             obj.confidence = pbox[4];
-                //             obj.class_label = pbox[5];
-                //             memcpy(obj.top_feat, pbox+7, sizeof(obj.top_feat)); 
-                //             image_based_boxes.BoxArray.emplace_back(obj);
-                //         }
-                //     }
-                //     job.pro->set_value(image_based_boxes);
-                // }
                 fetch_jobs.clear();
             }
             stream_ = nullptr;
@@ -343,8 +303,6 @@ namespace Fcos{
                 tensor->set_workspace(make_shared<TRT::MixMemory>());
             }
 
-
-            
             tensor->set_stream(stream_);
             input_width_ = iLogger::upbound(image.cols, 32);
             input_height_ = iLogger::upbound(image.rows, 32);

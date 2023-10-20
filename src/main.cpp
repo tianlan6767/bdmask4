@@ -21,26 +21,17 @@ static const char* cocolabels[] = {
 };
 
 int main(){
-    // string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model-FCOS-Q1-2.trtmode)";
-    // string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdmask4/workspace/Q1/model_blender-Q1.trtmodel)";
-
     string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dd)";
-    string blend_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/mask)";
-
-
     BdmApp bdmapp;
     shared_ptr<Fcos::Infer> fcos1 = nullptr;
-
     int device_id1 = 1;
-
     float mean[] = {90};
     float std[] = {77};
 
-
     bool result1 = bdmapp.bdminit(fcos1, fcos_engine_path, mean, std, device_id1);
 
-    string src = R"(/media/ps/data/train/LQ/project/OQC/test/1017/ngs/*.jpg)";
-    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/OQC-inf)";
+    string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inffff/oqc-imgs/*.jpg)";
+    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inffff/inf)";
 
     vector<cv::String> files_;
     files_.reserve(10000);
@@ -79,7 +70,6 @@ int main(){
                 if (box.seg) {
                     string nimp_result_mask = dst + "/" + path.stem().string() +"_mask_" + to_string(idx) +".jpg";
                     auto box_mask = cv::Mat(box.seg->height, box.seg->width, CV_8U, box.seg->data);
-                    // cv::threshold(box_mask, box_mask, 125, 255, 1);
                     cv::imwrite(nimp_result_mask,
                                 box_mask);
 
@@ -94,7 +84,6 @@ int main(){
                             point += topleft;
                         }
                     }
-
                     cv::drawContours(image, contours, -1, cv::Scalar(0, 0, 255), 2);
                     idx++;
                     }

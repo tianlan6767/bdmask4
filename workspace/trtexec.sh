@@ -12,6 +12,7 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 #           --fp16 \
 #           --device=3 \
 #           --workspace=10240 \
+#           --preview=+fasterDynamicShapes0805
 
 
 
