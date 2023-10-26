@@ -24,14 +24,14 @@ int main(){
     string fcos_engine_path = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999-dd)";
     BdmApp bdmapp;
     shared_ptr<Fcos::Infer> fcos1 = nullptr;
-    int device_id1 = 1;
+    int device_id1 = 2;
     float mean[] = {90};
     float std[] = {77};
 
     bool result1 = bdmapp.bdminit(fcos1, fcos_engine_path, mean, std, device_id1);
 
-    string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inffff/oqc-imgs/*.jpg)";
-    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inffff/inf)";
+    string src = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inf1023/OQC/imgs2/*.bmp)";
+    string dst = R"(/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inf1023/OQC/tinf2)";
 
     vector<cv::String> files_;
     files_.reserve(10000);
@@ -45,7 +45,7 @@ int main(){
     int noc = 1;
     while(noc){
         for(int im_idx=0; im_idx < files.size(); ++im_idx){
-            cv::Mat image = cv::imread(files[im_idx], 0);
+            cv::Mat image = cv::imread(files[im_idx], -1);
             boost::filesystem::path path(files[im_idx]);
             string nimp_result = dst + "/" + path.stem().string()  + ".jpg";
             auto begin_time1 = iLogger::timestamp_now_float();
@@ -70,8 +70,8 @@ int main(){
                 if (box.seg) {
                     string nimp_result_mask = dst + "/" + path.stem().string() +"_mask_" + to_string(idx) +".jpg";
                     auto box_mask = cv::Mat(box.seg->height, box.seg->width, CV_8U, box.seg->data);
-                    cv::imwrite(nimp_result_mask,
-                                box_mask);
+                    // cv::imwrite(nimp_result_mask,
+                    //             box_mask);
 
                     cv::Mat edges;
                     std::vector<std::vector<cv::Point>> contours;

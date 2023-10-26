@@ -109,9 +109,7 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats=None):
     
 
 def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_feat=None):
-    # N, C, H, W = list(map(int, logits_pred.shape))
     N, C, H, W = logits_pred.shape
-
     # put in the same format as locations
     logits_pred = logits_pred.view(-1, C, H, W).permute(0, 2, 3, 1)      # (1,25,256,256) => (1,256,256,25)
     logits_pred = logits_pred.reshape(-1, H*W, C).sigmoid()               # (1,256,256,25) => (1,65536,25)
@@ -187,17 +185,18 @@ def main():
     )
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
-    parser.add_argument('--channel', default=1, type=int)
+    parser.add_argument('--channel', default=3, type=int)
+    parser.add_argument('--dynamic', default=False, action="store_true")
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016.pth",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016.onnx",
+        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-1023-dd.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -223,20 +222,19 @@ def main():
     cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
     cfg.MODEL.BACKBONE.FREEZE_AT = 0
         
-    # cfg.INPUT.FORMAT = 'L'
-    # cfg.MODEL.PIXEL_MEAN = [59.406]
-    # cfg.MODEL.PIXEL_STD = [59.32]
-    
-    cfg.INPUT.FORMAT = 'L'
-    cfg.MODEL.PIXEL_MEAN = [41]
-    cfg.MODEL.PIXEL_STD = [34]
-
+    if args.channel == 1:
+        cfg.INPUT.FORMAT = 'L'
+        cfg.MODEL.PIXEL_MEAN = [1]
+        cfg.MODEL.PIXEL_STD = [1]
+    else:
+        cfg.INPUT.FORMAT = 'BGR'
+        cfg.MODEL.PIXEL_MEAN = [1,1,1]
+        cfg.MODEL.PIXEL_STD = [1,1,1]
 
     cfg.MODEL.BASIS_MODULE.NORM = 'BN'
     cfg.freeze()
     # -------------------------------------------------------------------------------------------------------------------------
     model = build_model(cfg)
-
 
     model.eval()
     model.to(cfg.MODEL.DEVICE)
@@ -250,9 +248,6 @@ def main():
     if args.height > 0:
         height = args.height
     input_names = ["input_image"]
-    
-    # 加载图像
-    # im = cv2.imread(r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/2048.jpg", 0)
     
     dummy_input = torch.zeros((1, args.channel, height, width)).to(cfg.MODEL.DEVICE)
 
@@ -268,8 +263,6 @@ def main():
     if not osp.exists(osp.dirname(args.output)):
         os.makedirs(osp.dirname(args.output), exist_ok=True)
         
-        
-    
     torch.onnx.export(
         model,
         dummy_input,
@@ -280,11 +273,11 @@ def main():
         output_names=output_names,
         keep_initializers_as_inputs=False,
         opset_version=11,
-        # dynamic_axes = {
-        #     "input_image":{2:"h", 3:"w"},
-        #     "bases":{2: "bases_h", 3:"bases_w"},
-        #     "pred":{1:"pred_nums"}
-        # }
+        dynamic_axes = {
+            "input_image":{2:"h", 3:"w"},
+            "bases":{2: "bases_h", 3:"bases_w"},
+            "pred":{1:"pred_nums"}
+        } if args.dynamic else None
     )
 
     onnx_model = onnx.load(args.output)
@@ -293,7 +286,5 @@ def main():
     onnx.save(model_simp, args.output)
     print("Done. The onnx model is saved into {}.".format(args.output))
     
-    
-
 if __name__ == "__main__":
     main()
