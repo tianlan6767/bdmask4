@@ -7,7 +7,7 @@
                 "/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/include/**",
                 "/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/cpp-packages/opencv4.2/include/**",
                 "/usr/include/boost/**",
-                "/media/ps/data/train/LQ/LQ/bdms/lean/libtorch/include/**"
+                "/media/ps/data/train/LQ/task/lean/libtorch/include/**"
             ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "${default}",

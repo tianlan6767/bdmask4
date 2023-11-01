@@ -41,11 +41,11 @@ include_paths := src              \
 	$(cuda_home)/include/tensorRT \
 	$(cpp_pkg)/opencv4.2/include  \
 	/usr/include/boost \
-	/media/ps/data/train/LQ/LQ/bdms/lean/libtorch/include \
-	/media/ps/data/train/LQ/LQ/bdms/lean/libtorch/include/torch/csrc/api/include 
+	/media/ps/data/train/LQ/task/lean/libtorch/include \
+	/media/ps/data/train/LQ/task/lean/libtorch/include/torch/csrc/api/include 
 
 # 定义库文件路径，只需要写路径，不需要写-L
-library_paths := $(cuda_home)/lib64 $(syslib) $(cpp_pkg)/opencv4.2/lib /media/ps/data/train/LQ/LQ/bdms/lean/libtorch/lib
+library_paths := $(cuda_home)/lib64 $(syslib) $(cpp_pkg)/opencv4.2/lib /media/ps/data/train/LQ/task/lean/libtorch/lib
 
 # 把library path给拼接为一个字符串，例如a b c => a:b:c
 # 然后使得LD_LIBRARY_PATH=a:b:c
