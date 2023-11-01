@@ -26,7 +26,7 @@ import json
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # torch.cuda.set_device(1)
 
-jf = r'/media/ps/data/train/LQ/project/OQC/train/0001/go/annotations/train.json'
+jf = r'/media/ps/data/train/LQ/project/OQC/train/000t/go/annotations/train.json'
 imgs = r''
 register_coco_instances("phone", {}, jf, imgs)
 fruits_nuts_metadata = MetadataCatalog.get("phone")
@@ -83,18 +83,18 @@ def init(key, iv):
     config_file = r'/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
     cfg.DATALOADER.NUM_WORKERS = 0
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50
-    cfg.MODEL.FCOS.NUM_CLASSES = 50
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25
+    cfg.MODEL.FCOS.NUM_CLASSES = 25
     img_size = 2048
     cfg.INPUT.MAX_SIZE_TRAIN = img_size
     cfg.INPUT.MIN_SIZE_TRAIN = img_size
     cfg.INPUT.MAX_SIZE_TEST = img_size
     cfg.INPUT.MIN_SIZE_TEST = img_size
-    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/model_0364999.pth"
+    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model_0826.pth"
     
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
-    cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.14
-    cfg.MODEL.DEVICE = "cuda:0"
+    cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.02
+    cfg.MODEL.DEVICE = "cuda:3"
     cfg.MODEL.KEY = key
     cfg.MODEL.IV =  iv
     
@@ -124,13 +124,14 @@ def init(key, iv):
     
     cfg.MODEL.FCOS.CENTER_SAMPLE = "center"
 
-    cfg.INPUT.FORMAT = 'L'
-    cfg.MODEL.PIXEL_MEAN = [90]
-    cfg.MODEL.PIXEL_STD = [77]
-
     # cfg.INPUT.FORMAT = 'L'
-    # cfg.MODEL.PIXEL_MEAN = [50]
-    # cfg.MODEL.PIXEL_STD = [48]
+    # cfg.MODEL.PIXEL_MEAN = [90]
+    # cfg.MODEL.PIXEL_STD = [77]
+
+    cfg.INPUT.FORMAT = 'BGR'
+    cfg.MODEL.PIXEL_MEAN = [41, 41, 41]
+    cfg.MODEL.PIXEL_STD = [34, 34, 34]
+
 
     # cfg.MODEL.RESNETS.DEFORM_ON_PER_STAGE = [True, True, True, True]
     # cfg.MODEL.FCOS.USE_DEFORMABLE = True
@@ -158,7 +159,7 @@ def predict(*image):
     et = round(st2 - st1, 3)
     # print("dsfd", et)
     # print(original_images)
-    sub_save_dir = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inf1023/OQC/pyinf2"
+    sub_save_dir = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/pinf5"
     if not os.path.exists(sub_save_dir):
         os.makedirs(sub_save_dir, exist_ok=True)
     if len(original_images[0].shape) == 2:
@@ -183,19 +184,19 @@ def predict(*image):
         scores.append(predictions.scores.tolist())
         classes.append(predictions.pred_classes.tolist())
         # masks.append(np.asarray(predictions.pred_masks))
-        # boxs.append(np.asarray(predictions.pred_boxes))
+        boxs.append(np.asarray(predictions.pred_boxes))
         pred_masks_gpu = output["instances"].pred_masks
         masks_lst = []
         for pred_mask in pred_masks_gpu:
             mask = [m.cpu().numpy() for m in torch.where(pred_mask)]
             masks_lst.append(np.array(mask))
         masks.append(masks_lst)
-    if len(scores):
-        for score, classid, box in zip(scores, classes, boxs):
-            for s, cid, b in zip(score, classid, box):
-                print(s,"**", cid)
-                pass
-    print("保存的图片名称",imn_orig)
+    # if len(scores):
+    #     for score, classid, box in zip(scores, classes, boxs):
+    #         for s, cid, b in zip(score, classid, box):
+    #             print(s,"**", cid)
+    #             # pass
+    print("保存的图片名称",imn_orig, scores, classes, boxs)
     
     return [scores, classes, masks], et
 
@@ -247,9 +248,9 @@ if __name__ == "__main__":
     global imn_orig
     np.set_printoptions(suppress=True)
     init("8Xe0efbbhSPHmaw0", "OwXaWuIhMzErsKl5")
-    src = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/inf1023/OQC/imgs2"
+    src = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/JT-imgs/2222"
 
-    dst = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/OQC-pinf"
+    dst = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/pinf5"
     if not os.path.exists(dst):
         os.makedirs(dst, exist_ok=True)
     
