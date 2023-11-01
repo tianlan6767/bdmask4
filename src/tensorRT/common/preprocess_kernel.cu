@@ -166,23 +166,16 @@ namespace CUDAKernel{
 			c0 = floorf(w1 * v1[0] + w2 * v2[0] + w3 * v3[0] + w4 * v4[0] + 0.5f);
 		}
 
-        // printf("当前数值:%f---%f:", norm.mean[0], norm.std[0]);
-
-
-
 		if (norm.type == NormType::MeanStd) {
 			c0 = (c0 * norm.alpha - norm.mean[0]) / norm.std[0];
 		}
 		else if (norm.type == NormType::AlphaBeta) {
 			c0 = c0 * norm.alpha + norm.beta;
-
 		}
 
 		int area = dst_width * dst_height;
 		float* pdst_c0 = dst + dy * dst_width + dx;
-
 		*pdst_c0 = c0;
-
 	}
 
 	__global__ void warp_affine_bilinear_and_normalize_plane_kernel(uint8_t* src, int src_line_size, int src_width, int src_height, float* dst, int dst_width, int dst_height, 
@@ -270,7 +263,36 @@ namespace CUDAKernel{
 		*pdst_c1 = c1;
 		*pdst_c2 = c2;
 	}
+    
 
+    __global__ void resize_and_normalize_plane_kernel(uint8_t* src, int src_line_size, int src_width, int src_height, float* dst, int dst_width, int dst_height, 
+		uint8_t const_value_st, float* warp_affine_matrix_2_3, Norm norm, int edge){
+
+		int position = blockDim.x * blockIdx.x + threadIdx.x;
+		if (position >= edge) return;
+
+		int dx      = position % dst_width;
+		int dy      = position / dst_width;
+        float c0, c1, c2;
+        if(dx >=dst_width || dy >= dst_height) return;
+        if (dx >=src_width || dy >= src_height){
+            c0 = const_value_st;
+            c1 = const_value_st;
+            c2 = const_value_st;
+        }else{
+            int src_area = src_width * src_height;
+            c0 = src[dy * src_width + dx];
+            c1 = src[dy * src_width + dx + src_area];
+            c2 = src[dy * src_width + dx + src_area + src_area];
+        }
+        int dst_area  = dst_width * dst_height;
+        float* pdst_c0 = dst + dy * dst_width + dx;
+        float* pdst_c1 = pdst_c0 + dst_area;
+        float* pdst_c2 = pdst_c1 + dst_area;
+        *pdst_c0 = c0;
+        *pdst_c1 = c1;
+        *pdst_c2 = c2;
+	}
 
 	__global__ void warp_affine_bilinear_and_normalize_focus_kernel(uint8_t* src, int src_line_size, int src_width, int src_height, float* dst, int dst_width, int dst_height, 
 		uint8_t const_value_st, float* warp_affine_matrix_1_3, Norm norm, int edge){
@@ -447,6 +469,54 @@ namespace CUDAKernel{
 		));
 	}
 
+
+    static __global__ void resize_and_norm_plane_kernel(uint8_t* src, int src_width, int src_height, float* dst, int dst_width, int dst_height, int channels, Norm norm, int edge){
+
+             int position = blockDim.x * blockIdx.x + threadIdx.x;
+            if (position >= edge) return;
+
+            int dx      = position % dst_width;
+            int dy      = position / dst_width;
+            float c0, c1, c2;
+            int dst_area = dst_width * dst_height;
+            if (dx < dst_width && dy < dst_height) {
+                if (dx < src_width && dy < src_height) {
+                    int srcIdx_c0 = (dy * src_width + dx) * channels + 0;
+                    int srcIdx_c1 = (dy * src_width + dx) * channels + 1;
+                    int srcIdx_c2 = (dy * src_width + dx) * channels + 2;
+                    c0 = src[srcIdx_c0];
+                    c1 = src[srcIdx_c1];
+                    c2 = src[srcIdx_c2];
+                } else {
+                    c0 = 0.0f;
+                    c1 = 0.0f;
+                    c2 = 0.0f;
+                }
+                int dstIdx_c0 = dy * dst_width + dx;
+                int dstIdx_c1 = dstIdx_c0 + dst_area;
+                int dstIdx_c2 = dstIdx_c1 + dst_area;
+                // dst[dstIdx_c0] = (c0 - norm.mean[0]) / norm.std[0];
+                // dst[dstIdx_c1] = (c1 - norm.mean[1]) / norm.std[1];
+                // dst[dstIdx_c2] = (c2 - norm.mean[2]) / norm.std[2];
+
+                dst[dstIdx_c0] = c0;
+                dst[dstIdx_c1] = c1;
+                dst[dstIdx_c2] = c2;
+            }
+        }
+
+
+    void resize_and_norm_plane(
+            uint8_t* src, int src_width, int src_height, float* dst, int dst_width, int dst_height,int channels, Norm norm, 
+            cudaStream_t stream) {
+            
+            int jobs   = dst_width * dst_height;
+            auto grid  = CUDATools::grid_dims(jobs);
+            auto block = CUDATools::block_dims(jobs);
+
+            checkCudaKernel(resize_and_norm_plane_kernel << <grid, block, 0, stream >> > (src,src_width, src_height, dst,dst_width, dst_height, channels, norm, jobs));
+        }
+
 	void warp_affine_bilinear_and_normalize_plane(
 		uint8_t* src, int src_line_size, int src_width, int src_height, float* dst, int dst_width, int dst_height,
 		float* matrix_2_3, uint8_t const_value, const Norm& norm,
@@ -470,10 +540,8 @@ namespace CUDAKernel{
 				dst_width, dst_height, const_value, matrix_2_3, norm, jobs
 				))
         }
-		
-	}
+    }   
 
-	
 	void warp_affine_bilinear_and_normalize_focus(
         uint8_t* src, int src_line_size, int src_width, int src_height, 
         float* dst  , int dst_width, int dst_height,
@@ -515,14 +583,8 @@ namespace CUDAKernel{
         Assert(feature_height % 32 == 0);
 
 		int jobs   = num_feature * feature_height * feature_width;
-		// auto grid  = dim3(num_feature);
-		// auto block = dim3(feature_height * feature_width / 32, 32);
-
         auto grid  = CUDATools::grid_dims(jobs);   // 8192
 		auto block = CUDATools::block_dims(jobs); // 512
-        // printf("当前划分:%d---%d---%d---%d\n", feature_height, jobs, grid, block);
-        // printf("当前划分:%d\n", block);
-
 		checkCudaKernel(threshold_feature_kernel << <grid, block, 0, stream >> > (
 			feature_array, feature_output, num_feature, feature_height, feature_width, confidence, jobs
 		));	

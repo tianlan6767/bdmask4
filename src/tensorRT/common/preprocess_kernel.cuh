@@ -59,6 +59,10 @@ namespace CUDAKernel{
         cudaStream_t stream
     );
 
+    void resize_and_norm_plane(
+            uint8_t* src, int src_width, int src_height, float* dst, int dst_width, int dst_height,int channels, Norm norm, 
+            cudaStream_t stream);
+
     void convert_nv12_to_bgr_invoke(
         const uint8_t* y, const uint8_t* uv, int width, int height, 
         int linesize, uint8_t* dst, 

@@ -30,17 +30,37 @@ namespace Fcos{
         this->height = 0;
     }
 
+    // struct AffineMatrix{
+    //     float i2d[6];       // image to dst(network), 2x3 matrix
+    //     float d2i[6];       // dst to image, 2x3 matrix
+
+    //     void compute(const cv::Size& from, const cv::Size& to){
+    //         float scale_x = to.width / (float)from.width;
+    //         float scale_y = to.height / (float)from.height;
+    //         float scale = std::min(scale_x, scale_y);
+
+    //         i2d[0] = scale;  i2d[1] = 0;  i2d[2] = -scale * from.width  * 0.5  + to.width * 0.5 + scale * 0.5 - 0.5;
+    //         i2d[3] = 0;  i2d[4] = scale;  i2d[5] = -scale * from.height * 0.5 + to.height * 0.5 + scale * 0.5 - 0.5;
+
+    //         // 有了i2d矩阵，我们求其逆矩阵，即可得到d2i（用以解码时还原到原始图像分辨率上）
+    //         cv::Mat m2x3_i2d(2, 3, CV_32F, i2d);
+    //         cv::Mat m2x3_d2i(2, 3, CV_32F, d2i);
+    //         cv::invertAffineTransform(m2x3_i2d, m2x3_d2i);
+    //     }
+
+    //     cv::Mat i2d_mat(){
+    //         return cv::Mat(2, 3, CV_32F, i2d);
+    //     }
+    // };
+
     struct AffineMatrix{
         float i2d[6];       // image to dst(network), 2x3 matrix
         float d2i[6];       // dst to image, 2x3 matrix
 
         void compute(const cv::Size& from, const cv::Size& to){
-            float scale_x = to.width / (float)from.width;
-            float scale_y = to.height / (float)from.height;
-            float scale = std::min(scale_x, scale_y);
-
-            i2d[0] = scale;  i2d[1] = 0;  i2d[2] = -scale * from.width  * 0.5  + to.width * 0.5 + scale * 0.5 - 0.5;
-            i2d[3] = 0;  i2d[4] = scale;  i2d[5] = -scale * from.height * 0.5 + to.height * 0.5 + scale * 0.5 - 0.5;
+            assert(from.width > 0 && from.height > 0 && to.width > 0 && to.height > 0 && to.width >= from.width && to.height >= from.height);
+            i2d[0] = 1.0f;  i2d[1] = 0;  i2d[2] = 0;
+            i2d[3] = 0;  i2d[4] = 1.0f;  i2d[5] = 0;
 
             // 有了i2d矩阵，我们求其逆矩阵，即可得到d2i（用以解码时还原到原始图像分辨率上）
             cv::Mat m2x3_i2d(2, 3, CV_32F, i2d);
@@ -52,7 +72,6 @@ namespace Fcos{
             return cv::Mat(2, 3, CV_32F, i2d);
         }
     };
-
 
 
     void generate_grid(float* box, int N, int height, int width, float* box_grid, cudaStream_t stream);
@@ -136,7 +155,6 @@ namespace Fcos{
             const int MAX_IMAGE_BBOX = 1024;
             const int NUM_BOX_ELEMENT = 792;    // left, top, right, bottom, confidence, keepflag(1keep,0ignore), num_index, top_feat(784)
             const int FEAT_DIM        = 14;
-
             const int MASK_DIM        = 56;
             TRT::Tensor affin_matrix_device(TRT::DataType::Float);
             TRT::Tensor output_array_device(TRT::DataType::Float);
@@ -175,7 +193,6 @@ namespace Fcos{
             output_bases_device.resize(max_batch_size, bases_out->size(1)*bases_out->size(2)*bases_out->size(3)).to_gpu();
 
             // mask参数
-            // box_output_device.resize(max_batch_size, 1 + MAX_IMAGE_BBOX * 8).to_gpu();  // counter, left, right, top, bottom, conf, label, box_h, box_w
             top_device.resize(max_batch_size, bases_out->size(1), MASK_DIM, MASK_DIM).to_gpu();
             feat_out_device.resize(max_batch_size, bases_out->size(1), MASK_DIM, MASK_DIM).to_gpu();
             mask_pred_device.resize(MASK_DIM, MASK_DIM).to_gpu();
@@ -210,10 +227,8 @@ namespace Fcos{
                     float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
                     auto affine_matrix        = affin_matrix_device.gpu<float>(ibatch);
                     checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(float)*(1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT)*(max_batch_size), stream_));
-                    // output->save_to_file("./inf/orig/used/output");
 
                     decode_kernel_invoker(image_pred_output, output->size(1), num_classes, confidence_threshold_, affine_matrix, output_array_ptr, MAX_IMAGE_BBOX, stream_);
-                    // output_array_device.save_to_file("./inf/orig/used/output_device");
                     recount_box(output_array_ptr, input_height_, input_width_, MAX_IMAGE_BBOX, stream_);
                     if(nms_method_ == NMSMethod::FastGPU){
                         nms_kernel_invoker(output_array_ptr, nms_threshold_, MAX_IMAGE_BBOX, stream_);
@@ -307,11 +322,12 @@ namespace Fcos{
             input_width_ = iLogger::upbound(image.cols, 32);
             input_height_ = iLogger::upbound(image.rows, 32);
             tensor->resize(1, channel, input_height_, input_width_);
-            
+            cv::Size image_size = image.size();
             Size input_size(input_width_, input_height_);
-            job.additional.compute(image.size(), input_size);
+            job.additional.compute(image_size, input_size);
 
             size_t size_image      = input_width_ * input_height_ * channel;
+            size_t size_image_old  = image_size.width * image_size.height * channel;
             size_t size_matrix     = iLogger::upbound(sizeof(job.additional.d2i), 32);
             auto workspace         = tensor->get_workspace();
             uint8_t* gpu_workspace        = (uint8_t*)workspace->gpu(size_matrix + size_image);
@@ -324,8 +340,13 @@ namespace Fcos{
 
             //checkCudaRuntime(cudaMemcpyAsync(image_host,   image.data, size_image, cudaMemcpyHostToHost,   stream_));
             // speed up
-            memcpy(image_host, image.data, size_image);
+            // memcpy(image_host, image.data, size_image);
+            // TRT::Tensor src_device(TRT::DataType::UInt8);
+            // src_device.resize(image.rows, image.cols, channel);
+            // uint8_t* image_device = src_device.gpu<uint8_t>();
+            memcpy(image_host, image.data, size_image_old);
             memcpy(affine_matrix_host, job.additional.d2i, sizeof(job.additional.d2i));
+            checkCudaRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, stream_));
             checkCudaRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, stream_));
             checkCudaRuntime(cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(job.additional.d2i), cudaMemcpyHostToDevice, stream_));
 
@@ -336,7 +357,12 @@ namespace Fcos{
                 normalize_, stream_
             );
 
-            // tensor->save_to_file("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/imgs/process/2448");
+            // 将图片粘贴在左上角
+            // CUDAKernel::resize_and_norm_plane(
+            //     image_device, image.cols, image.rows, tensor->gpu<float>(), input_width_, input_height_, channel, normalize_, stream_   
+            // );
+
+            // tensor->save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/JT-imgs/2222/ttt");
 
             return true;
         }
