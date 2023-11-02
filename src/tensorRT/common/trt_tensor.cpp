@@ -413,7 +413,8 @@ namespace TRT{
 
 	Tensor& Tensor::adajust_memory_by_update_dims_or_type(){
 		
-		int needed_size = this->numel() * element_size();
+		// int needed_size = this->numel() * element_size();
+        unsigned int needed_size = this->numel() * element_size();
 		if(needed_size > this->bytes_){
 			head_ = DataHead::Init;
 		}
