@@ -4,15 +4,15 @@ export LD_LIBRARY_PATH=/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages
 # 转换fcos分支
 
 cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/bin
-# ./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.onnx \
-#           --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-8192 \
-#           --minShapes=input_image:1x3x2048x2048 \
-#           --optShapes=input_image:1x3x4096x8192  \
-#           --maxShapes=input_image:1x3x4096x8192  \
-#           --fp16 \
-#           --device=3 \
-#           --workspace=10240 \
-#           --preview=+fasterDynamicShapes0805
+./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-222.onnx \
+          --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-0826-8192 \
+          --minShapes=input_image:1x3x2048x2048 \
+          --optShapes=input_image:1x3x4096x8192  \
+          --maxShapes=input_image:1x3x4096x8192  \
+          --fp16 \
+          --device=3 \
+          --workspace=10240 \
+          --preview=+fasterDynamicShapes0805
 
 
 
@@ -32,11 +32,11 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 #           --device=3 \
 #           --workspace=4096
 
-./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016-2.onnx \
-          --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016-2\
-          --fp16 \
-          --device=0 \
-          --workspace=4096
+# ./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016-2.onnx \
+#           --saveEngine=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/model_1016-2\
+#           --fp16 \
+#           --device=0 \
+#           --workspace=4096
 
 # 转换ptq模型
 # ./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826_ptq.onnx \

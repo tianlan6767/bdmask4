@@ -21,17 +21,17 @@ static const char* cocolabels[] = {
 };
 
 int main(){
-    string fcos_engine_path = R"(/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model_0826-dy)";
+    string fcos_engine_path = R"(/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-0826-8192)";
     BdmApp bdmapp;
     shared_ptr<Fcos::Infer> fcos1 = nullptr;
-    int device_id1 = 3;
+    int device_id1 = 0;
     float mean[] = {41,41,41};
     float std[] = {34,34,34};
 
     bool result1 = bdmapp.bdminit(fcos1, fcos_engine_path, mean, std, device_id1);
 
-    string src = R"(/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/JT-imgs/2222/*.jpg)";
-    string dst = R"(/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/inf333)";
+    string src = R"(/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/imgs/8192/*.jpg)";
+    string dst = R"(/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/inf)";
 
     vector<cv::String> files_;
     files_.reserve(10000);
