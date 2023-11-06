@@ -54,24 +54,18 @@ class SummaryTool:
         json.dump(self.data, open(self.file, "w"), indent=4)
 
 
-def patch_blendmask(cfg, model):
+def patch_blendmask(model):
     def forward(self, tensor):
         images = None
         gt_instances = None
         basis_sem = None
 
         features = self.backbone(tensor)
-        basis_out, basis_losses = self.basis_module(features, basis_sem)
+        basis_out, _ = self.basis_module(features, basis_sem)
         proposals  = self.proposal_generator(images, features, gt_instances, self.top_layer)
         return basis_out["bases"][0], proposals
-        # return proposals
 
     model.forward = types.MethodType(forward, model)
-    # output
-    # output_names.extend(["bases"])
-    # output_names.extend(["pred"])
-    # for item in ["pred", "mask_logits"]:
-    #     output_names.extend([item])
 
 
 
@@ -85,13 +79,6 @@ def patch_fcos(cfg, proposal_generator):
         return results
 
     proposal_generator.forward = types.MethodType(proposal_generator_forward, proposal_generator)
-
-
-def _fmt_box_list(box_tensor, batch_index: int):
-    repeated_index = torch.full_like(
-        box_tensor[:, :1], batch_index, dtype=box_tensor.dtype, device=box_tensor.device
-    )
-    return torch.cat((repeated_index, box_tensor), dim=1)
 
 
 def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats=None):      
@@ -432,7 +419,7 @@ def main():
         _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
 
     if isinstance(model, BlendMask):
-        patch_blendmask(cfg, model)
+        patch_blendmask(model)
 
     if hasattr(model, 'proposal_generator'):
         if isinstance(model.proposal_generator, FCOS):
