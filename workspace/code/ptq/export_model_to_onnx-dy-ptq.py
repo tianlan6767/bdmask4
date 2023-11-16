@@ -34,14 +34,45 @@ import json
 # multiple versions of Adet/FCOS are installed, remove the conflict ones from the path
 
 import sys
+
+
+import quantization.quantize as quantize
     
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
 
 from adet.config import get_cfg
 from adet.modeling import FCOS, BlendMask
+from detectron2.evaluation import (
+    COCOEvaluator,
+    COCOPanopticEvaluator,
+    DatasetEvaluators,
+    LVISEvaluator,
+    PascalVOCDetectionEvaluator,
+    SemSegEvaluator,
+    verify_results,
+)
+from detectron2.data import (
+    MetadataCatalog,
+    DatasetCatalog,
+    DatasetFromList,
+    build_detection_test_loader,
+    build_detection_train_loader,
+)
 
-import quantization.quantize as quantize
+from detectron2.evaluation import (
+    DatasetEvaluator,
+    inference_on_dataset,
+    print_csv_format,
+    verify_results,
+)
+
+from detectron2.data.datasets import register_coco_instances
+jf = '/media/ps/data/train/LQ/project/OQC/train/0000/go/annotations/train.json'
+imgs = '/media/ps/data/train/LQ/project/OQC/train/0000/go/train'
+register_coco_instances("phone", {}, jf, imgs)
+fruits_nuts_metadata = MetadataCatalog.get("phone")
+dataset_dicts = DatasetCatalog.get("phone")
 
 
 class SummaryTool:
@@ -235,28 +266,35 @@ def cmd_quantize(cfg,args, model, dataset, save_dir, eval_origin=False, eval_ptq
     if save_qat and os.path.dirname(save_qat) != "":
         os.makedirs(os.path.dirname(save_qat), exist_ok=True)
     
+
+    # 量化初始化
     quantize.initialize()
     device  = torch.device(cfg.MODEL.DEVICE)
+
+    #数据集准备
     train_dataloader = create_train_dataloader(cfg, dataset)
     # val_dataloader   = create_coco_val_dataloader(dataset)
     quantize.replace_to_quantization_module(model)
+
     # quantize.apply_custom_rules_to_quantizer(cfg, args, model, export_onnx)
+
+    # 标定模型
     quantize.calibrate_model(cfg, model, train_dataloader, device)
 
     json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
     summary_file = os.path.join(json_save_dir, "summary.json")
     # summary = SummaryTool(summary_file)
 
-    # if eval_origin:
-    #     print("Evaluate Origin...")
-    #     with quantize.disable_quantization(model):
-    #         ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
-    #         summary.append(["Origin", ap])
+    if eval_origin:
+        print("Evaluate Origin...")
+        with quantize.disable_quantization(model):
+            ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
+            summary.append(["Origin", ap])
 
-    # if eval_ptq:
-    #     print("Evaluate PTQ...")
-    #     ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
-    #     summary.append(["PTQ", ap])
+    if eval_ptq:
+        print("Evaluate PTQ...")
+        ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
+        summary.append(["PTQ", ap])
 
     if save_ptq:
         print(f"Save ptq model to {save_ptq}")
@@ -354,6 +392,41 @@ def cmd_export(cfg, args, model):
     # print(f"Save onnx to {onnx_path}")
 
 
+
+
+def setup(args):
+    # train.py -----------------------------------------------------------------------------------------
+    cfg = get_cfg()
+    cfg.merge_from_list(args.opts)
+    config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
+    cfg.merge_from_file(config_file)
+
+    cfg.DATASETS.TRAIN = ("phone",)
+    cfg.DATASETS.TEST = ("phone",)   # no metrics implemented for this dataset
+
+    cfg.MODEL.WEIGHTS = args.weights
+    cfg.MODEL.DEVICE = "cuda:2"
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50  # 3 classes (data, fig, hazelnut)
+    cfg.MODEL.FCOS.NUM_CLASSES = 50
+
+    cfg.MODEL.RESNETS.DEPTH = 34
+    cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
+    cfg.MODEL.BACKBONE.FREEZE_AT = 0
+        
+    if args.channel == 1:
+        cfg.INPUT.FORMAT = 'L'
+        cfg.MODEL.PIXEL_MEAN = [90]
+        cfg.MODEL.PIXEL_STD = [77]
+    else:
+        cfg.INPUT.FORMAT = 'BGR'
+        cfg.MODEL.PIXEL_MEAN = [1,1,1]
+        cfg.MODEL.PIXEL_STD = [1,1,1]
+
+    cfg.MODEL.BASIS_MODULE.NORM = 'BN'
+    cfg.freeze()
+    return cfg
+
+
 def main():
     parser = argparse.ArgumentParser(description="Export model to the onnx format")
     parser.add_argument(
@@ -364,20 +437,19 @@ def main():
     )
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
-    parser.add_argument('--channel', default=3, type=int)
-    parser.add_argument('--dynamic', default=False, type=bool)
-    parser.add_argument('--ptq', default=True, type=bool)
+    parser.add_argument('--channel', default=1, type=int)
+    parser.add_argument('--dynamic', default=False, action="store_true")
+    
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
-        # default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826_ptq.pth",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/OQC/model_0277999-1007.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT",
-        metavar="path",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/OQC/model_0277999-1007.onnx",
+        metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
@@ -386,59 +458,46 @@ def main():
         default=[],
         nargs=argparse.REMAINDER,
     )
+
     args = parser.parse_args()
-    # train.py -----------------------------------------------------------------------------------------
-    cfg = get_cfg()
-    cfg.merge_from_list(args.opts)
-    config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
-    cfg.merge_from_file(config_file)
-    cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:1"
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
-    cfg.MODEL.FCOS.NUM_CLASSES = 25
-    cfg.DATALOADER.NUM_WORKERS = 0
-    cfg.MODEL.RESNETS.DEPTH = 34
-    cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
-    cfg.MODEL.BACKBONE.FREEZE_AT = 0
     
-    cfg.INPUT.FORMAT = 'BGR'
-    cfg.MODEL.PIXEL_MEAN = [41,41,41]
-    cfg.MODEL.PIXEL_STD = [34,34,34]
+    cfg = setup(args)
 
-
-    cfg.MODEL.BASIS_MODULE.NORM = 'BN'
-    cfg.freeze()
-    # -------------------------------------------------------------------------------------------------------------------------
     model = build_model(cfg)
-
-
-    # model.eval()
     model.to(cfg.MODEL.DEVICE)
-    if args.ptq:
-        checkpointer = DetectionCheckpointer(model)
-        _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
+    model.eval()
+    # 评估coco-seg
 
-    if isinstance(model, BlendMask):
-        patch_blendmask(model)
+    evaluator = COCOEvaluator("phone", ("bbox", "segm"), False, output_dir="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/eval")
+    val_loader = build_detection_test_loader(cfg, "phone")
+    inference_on_dataset(model, val_loader, evaluator)
 
-    if hasattr(model, 'proposal_generator'):
-        if isinstance(model.proposal_generator, FCOS):
-            patch_fcos(cfg, model.proposal_generator)
-            patch_fcos_head(cfg, model.proposal_generator.fcos_head)
+
+    # if args.ptq:
+    #     checkpointer = DetectionCheckpointer(model)
+    #     _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
+
+    # if isinstance(model, BlendMask):
+    #     patch_blendmask(model)
+
+    # if hasattr(model, 'proposal_generator'):
+    #     if isinstance(model.proposal_generator, FCOS):
+    #         patch_fcos(cfg, model.proposal_generator)
+    #         patch_fcos_head(cfg, model.proposal_generator.fcos_head)
             
-    if not osp.exists(osp.dirname(args.output)):
-        os.makedirs(osp.dirname(args.output), exist_ok=True)
+    # if not osp.exists(osp.dirname(args.output)):
+    #     os.makedirs(osp.dirname(args.output), exist_ok=True)
     
 
-    train_dataset = r"/media/ps/data/train/LQ/project/OQC/train/0923/add-ngs"
-    # val_dataset = r"/media/ps/data/train/LQ/project/OQC/train/0922/add/ngs2"
+    # train_dataset = r"/media/ps/data/train/LQ/project/OQC/train/0923/add-ngs"
+    # # val_dataset = r"/media/ps/data/train/LQ/project/OQC/train/0922/add/ngs2"
     
 
     # cmd_quantize(cfg, args, model, train_dataset, args.output)
     
-    export_onnx(cfg, args, model, osp.join(args.output, "static.onnx"))
+    # export_onnx(cfg, args, model, osp.join(args.output, "static.onnx"))
     
-    # cmd_export(cfg, args, model)
+    # # cmd_export(cfg, args, model)
     
 if __name__ == "__main__":
     main()

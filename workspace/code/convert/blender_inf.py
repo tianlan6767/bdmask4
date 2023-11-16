@@ -198,53 +198,53 @@ def blender_noroialigned_nointerpolate(rois, box, coeffs):
 
 if __name__=="__main__":
     np.set_printoptions(suppress=True)
-    base_input_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/base_input"
-    box_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/box_input"
-    feat_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/top_feat_input"  
-    feat_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/feat_resize"
-    output_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/output-nogrid-sampler"
-    roi_align_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/top_input-roialigned"
-    feat_output_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/feat_out_device"
-    mask_pred_f   = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/mask_pred_device"
-    grid_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/box_grid_device"
-    grid_w_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/grid_w_device"
-    grid_h_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/grid_h_device"
+    # base_input_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/base_input"
+    # box_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/box_input"
+    # feat_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/top_feat_input"  
+    # feat_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/feat_resize"
+    # output_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/output-nogrid-sampler"
+    # roi_align_input = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/top_input-roialigned"
+    # feat_output_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/feat_out_device"
+    # mask_pred_f   = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/mask_pred_device"
+    # grid_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/box_grid_device"
+    # grid_w_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/grid_w_device"
+    # grid_h_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/inf/grid_h_device"
     
-    box_mask_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/box_mask_device"
-    # imgs = glob(r"/media/ps/data/train/LQ/LQ/bdmask/workspace/inf" + "/*.jpg")
-    # for im in imgs:
-    #     imn = "+" + osp.basename(im)
-    #     nim = load_tensor(im).squeeze()
-    #     print(nim)
-    #     cv2.imwrite(f"/media/ps/data/train/LQ/LQ/bdmask/workspace/inf/{imn}", nim)
-    # im = r"/media/ps/data/train/LQ/LQ/bdmask5-back/workspace/inf/1"
-    # nim = load_tensor(im).squeeze()
-    # cv2.imwrite(f"/media/ps/data/train/LQ/LQ/bdmask5-back/workspace/inf/1.jpg", nim)
+    # box_mask_device_f = r"/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/box_mask_device"
+    # # imgs = glob(r"/media/ps/data/train/LQ/LQ/bdmask/workspace/inf" + "/*.jpg")
+    # # for im in imgs:
+    # #     imn = "+" + osp.basename(im)
+    # #     nim = load_tensor(im).squeeze()
+    # #     print(nim)
+    # #     cv2.imwrite(f"/media/ps/data/train/LQ/LQ/bdmask/workspace/inf/{imn}", nim)
+    # # im = r"/media/ps/data/train/LQ/LQ/bdmask5-back/workspace/inf/1"
+    # # nim = load_tensor(im).squeeze()
+    # # cv2.imwrite(f"/media/ps/data/train/LQ/LQ/bdmask5-back/workspace/inf/1.jpg", nim)
     
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
+    # start = torch.cuda.Event(enable_timing=True)
+    # end = torch.cuda.Event(enable_timing=True)
 
 
-    base = torch.tensor(load_tensor(base_input_f))
-    box = torch.tensor(load_tensor(box_input))
-    feat = torch.tensor(load_tensor(feat_f))
-    output = torch.tensor(load_tensor(output_f))
-    roi_aligned = torch.tensor(load_tensor(roi_align_input))
-    feat_output = torch.tensor(load_tensor(feat_output_f))
-    feat_resize = torch.tensor(load_tensor(feat_device_f))
-    mask_pred = torch.tensor(load_tensor(mask_pred_f))
-    grid_device = torch.tensor(load_tensor(grid_device_f))
-    grid_w_device = torch.tensor(load_tensor(grid_w_device_f))
-    grid_h_device = torch.tensor(load_tensor(grid_h_device_f))
-    box_mask_device = torch.tensor(load_tensor(box_mask_device_f))
-    print("***************************************************************")
-    print(grid_h_device.shape, grid_w_device.shape)
-    print(grid_h_device)
-    print(grid_w_device)
-    print("***************************************************************")
-    print(base.shape, box.shape, feat.shape, output.shape, box[:,1:].shape,  box[:,1:], roi_aligned.shape,feat_resize.shape, mask_pred.shape,grid_device.shape,grid_device.shape, box_mask_device.shape)
+    # base = torch.tensor(load_tensor(base_input_f))
+    # box = torch.tensor(load_tensor(box_input))
+    # feat = torch.tensor(load_tensor(feat_f))
+    # output = torch.tensor(load_tensor(output_f))
+    # roi_aligned = torch.tensor(load_tensor(roi_align_input))
+    # feat_output = torch.tensor(load_tensor(feat_output_f))
+    # feat_resize = torch.tensor(load_tensor(feat_device_f))
+    # mask_pred = torch.tensor(load_tensor(mask_pred_f))
+    # grid_device = torch.tensor(load_tensor(grid_device_f))
+    # grid_w_device = torch.tensor(load_tensor(grid_w_device_f))
+    # grid_h_device = torch.tensor(load_tensor(grid_h_device_f))
+    # box_mask_device = torch.tensor(load_tensor(box_mask_device_f))
+    # print("***************************************************************")
+    # print(grid_h_device.shape, grid_w_device.shape)
+    # print(grid_h_device)
+    # print(grid_w_device)
+    # print("***************************************************************")
+    # print(base.shape, box.shape, feat.shape, output.shape, box[:,1:].shape,  box[:,1:], roi_aligned.shape,feat_resize.shape, mask_pred.shape,grid_device.shape,grid_device.shape, box_mask_device.shape)
     # mask_noaligned = blender_noroialigned(roi_aligned, box, feat)
-    mask_noaligned_no_interpolate = blender_noroialigned_nointerpolate(roi_aligned, box, feat_output)
+    # mask_noaligned_no_interpolate = blender_noroialigned_nointerpolate(roi_aligned, box, feat_output)
     
 
     # py_grid = generate_grid(box[:,1:])
@@ -272,19 +272,35 @@ if __name__=="__main__":
     
     # masks = blender(base, box_feat[0].unsqueeze(0))
 
-    masks = blender(base, box, feat)
+    # masks = blender(base, box, feat)
     # end.record()
     # torch.cuda.synchronize()
     # print(start.elapsed_time(end))
     # print(masks.shape)
+    # output_no_nms_f = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/output-no-nms"
+    # output_no_nms = load_tensor(output_no_nms_f)
+
+    # o_no_nms = output_no_nms[0][1:].reshape(1024, 792)
+    # print(o_no_nms.shape)
+    # o1_no_nms = o_no_nms[..., 4] > 0.09
     
-    masks = masks.squeeze().numpy()
-    masks = np.where(masks > 0.5, 255, 0)
-    # for idx, m in enumerate(masks):
-    #     print(m.shape)
-    #     if np.count_nonzero(m):
-    cv2.imwrite("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/orig.jpg", masks)
-    print("------------")
+    # o2_no_nms = o_no_nms[o1_no_nms][..., :6]
+    # # print(o2_no_nms, o2_no_nms.shape)
+    
+    
+    
+    img_f = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/tmp"
+    img = load_tensor(img_f).squeeze()
+    print(img.shape)
+    cv2.imwrite("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1/tmp2222.jpg", img)
+    
+    # masks = masks.squeeze().numpy()
+    # masks = np.where(masks > 0.5, 255, 0)
+    # # for idx, m in enumerate(masks):
+    # #     print(m.shape)
+    # #     if np.count_nonzero(m):
+    # cv2.imwrite("/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/CK/inf/orig.jpg", masks)
+    # print("------------")
     
     
     

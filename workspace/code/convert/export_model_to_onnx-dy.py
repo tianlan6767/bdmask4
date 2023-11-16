@@ -186,17 +186,17 @@ def main():
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
     parser.add_argument('--channel', default=3, type=int)
-    parser.add_argument('--dynamic', default=False, action="store_true")
+    parser.add_argument('--dynamic', default=True, action="store_true")
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-1023-dd.onnx",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-batch10.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -214,7 +214,7 @@ def main():
     config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:0"
+    cfg.MODEL.DEVICE = "cuda:3"
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
     cfg.MODEL.FCOS.NUM_CLASSES = 25
 
@@ -274,9 +274,9 @@ def main():
         keep_initializers_as_inputs=False,
         opset_version=11,
         dynamic_axes = {
-            "input_image":{2:"h", 3:"w"},
-            "bases":{2: "bases_h", 3:"bases_w"},
-            "pred":{1:"pred_nums"}
+            "input_image":{0:"batch", 2:"h", 3:"w"},
+            "bases":{0:"batch", 2: "bases_h", 3:"bases_w"},
+            "pred":{0:"batch", 1:"pred_nums"}
         } if args.dynamic else None
     )
 
