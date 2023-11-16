@@ -38,8 +38,14 @@
 ehthumbs.db
 Thumbs.db
 
-workspace/OQC
-workspace/Q1
-workspace/Q4
-workspace/Q42
 ! workspace/*.py
+workspace/code/ptq/quantization/__pycache__/quantize.cpython-38.pyc
+workspace/code/ptq/quantization/__pycache__/rules.cpython-38.pyc
+workspace/code/trt/data/data2/data_merge.json
+workspace/code/trt/data/data2/inf/new1/fp16/data-trt-fp16.json
+workspace/code/trt/data/data2/inf/new1/json/data-trt-fp16.json
+workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq-all-train10.json
+workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq-all-train500.json
+workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq-all-train8000.json
+workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq.json
+workspace/code/trt/data/data2/inf/new1/json/model_0413999.json
