@@ -84,7 +84,8 @@
         "forward_list": "cpp",
         "shared_mutex": "cpp",
         "valarray": "cpp",
-        "__atomic": "cpp"
+        "__atomic": "cpp",
+        "any": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabled",
     "python.analysis.typeCheckingMode": "basic"
