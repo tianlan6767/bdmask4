@@ -26,7 +26,7 @@ import json
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # torch.cuda.set_device(1)
 
-jf = r'/media/ps/data/train/LQ/project/OQC/train/000t/go/annotations/train.json'
+jf = r'/media/ps/data/train/LQ/project/OQC/train/0000/go/annotations/train.json'
 imgs = r''
 register_coco_instances("phone", {}, jf, imgs)
 fruits_nuts_metadata = MetadataCatalog.get("phone")
@@ -82,18 +82,23 @@ def init(key, iv):
     cfg = get_cfg()
     config_file = r'/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
+    cfg.DATASETS.TRAIN = ("phone",)
+    cfg.DATASETS.TEST = ("phone",)   # no metrics implemented for this dataset
+
     cfg.DATALOADER.NUM_WORKERS = 0
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25
-    cfg.MODEL.FCOS.NUM_CLASSES = 25
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50
+    cfg.MODEL.FCOS.NUM_CLASSES = 50
+
+
     img_size = 2048
     cfg.INPUT.MAX_SIZE_TRAIN = img_size
     cfg.INPUT.MIN_SIZE_TRAIN = img_size
     cfg.INPUT.MAX_SIZE_TEST = img_size
     cfg.INPUT.MIN_SIZE_TEST = img_size
-    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model_0826.pth"
+    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/used/model_0413999.pth"
     
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
-    cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.02
+    cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.09
     cfg.MODEL.DEVICE = "cuda:3"
     cfg.MODEL.KEY = key
     cfg.MODEL.IV =  iv
@@ -124,13 +129,13 @@ def init(key, iv):
     
     cfg.MODEL.FCOS.CENTER_SAMPLE = "center"
 
-    # cfg.INPUT.FORMAT = 'L'
-    # cfg.MODEL.PIXEL_MEAN = [90]
-    # cfg.MODEL.PIXEL_STD = [77]
+    cfg.INPUT.FORMAT = 'L'
+    cfg.MODEL.PIXEL_MEAN = [90]
+    cfg.MODEL.PIXEL_STD = [77]
 
-    cfg.INPUT.FORMAT = 'BGR'
-    cfg.MODEL.PIXEL_MEAN = [41, 41, 41]
-    cfg.MODEL.PIXEL_STD = [34, 34, 34]
+    # cfg.INPUT.FORMAT = 'BGR'
+    # cfg.MODEL.PIXEL_MEAN = [41, 41, 41]
+    # cfg.MODEL.PIXEL_STD = [34, 34, 34]
 
 
     # cfg.MODEL.RESNETS.DEFORM_ON_PER_STAGE = [True, True, True, True]
@@ -159,7 +164,7 @@ def predict(*image):
     et = round(st2 - st1, 3)
     # print("dsfd", et)
     # print(original_images)
-    sub_save_dir = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/pinf5"
+    sub_save_dir = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/inf/news/pth_inf"
     if not os.path.exists(sub_save_dir):
         os.makedirs(sub_save_dir, exist_ok=True)
     if len(original_images[0].shape) == 2:
@@ -184,7 +189,7 @@ def predict(*image):
         scores.append(predictions.scores.tolist())
         classes.append(predictions.pred_classes.tolist())
         # masks.append(np.asarray(predictions.pred_masks))
-        boxs.append(np.asarray(predictions.pred_boxes))
+        # boxs.append(np.asarray(predictions.pred_boxes))
         pred_masks_gpu = output["instances"].pred_masks
         masks_lst = []
         for pred_mask in pred_masks_gpu:
@@ -248,11 +253,11 @@ if __name__ == "__main__":
     global imn_orig
     np.set_printoptions(suppress=True)
     init("8Xe0efbbhSPHmaw0", "OwXaWuIhMzErsKl5")
-    src = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/JT-imgs/2222"
+    src = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/val"
 
-    dst = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/pinf5"
-    if not os.path.exists(dst):
-        os.makedirs(dst, exist_ok=True)
+    # dst = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/pinf5"
+    # if not os.path.exists(dst):
+    #     os.makedirs(dst, exist_ok=True)
     
     imps = glob.glob(src + "/*.[bj][mp][pg]")
     # jf = r"/media/ps/data/train/LQ/project/OQC/train/0000/go/train/data_merge.json"
@@ -301,7 +306,9 @@ if __name__ == "__main__":
     #     times.append(result[1])
     # print("共{}张图片，平均{:.3f}".format(len(times[1:]), sum(times[1:])/ len(times[1:])))
     
-    
+    # img1 = cv2.imread(imps[0], 0)
+    # img2 = cv2.imread(imps[1], 0)
+    # result = predict(*[img1, img2])
     
     for imp in tqdm.tqdm(imps):
 

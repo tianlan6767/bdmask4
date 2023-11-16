@@ -3,7 +3,6 @@
 bool BdmApp::bdminit(shared_ptr<Fcos::Infer> &fcos, const string &fcos_engine_path,float mean[],float std[],int device_id)
 {   
 
-    // int device_id = 0;
     fcos = Fcos::create_infer(fcos_engine_path, device_id, 0.09, mean, std);
     if (fcos != nullptr)
     {

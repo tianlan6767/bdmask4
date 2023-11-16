@@ -153,7 +153,7 @@ namespace Fcos{
             engine->print();
 
             const int MAX_IMAGE_BBOX = 1024;
-            const int NUM_BOX_ELEMENT = 792;    // left, top, right, bottom, confidence, keepflag(1keep,0ignore), num_index, top_feat(784)
+            const int NUM_BOX_ELEMENT = 792;    // left, top, right, bottom, confidence, label,  keepflag(1keep,0ignore), num_index, top_feat(784)
             const int FEAT_DIM        = 14;
             const int MASK_DIM        = 56;
             TRT::Tensor affin_matrix_device(TRT::DataType::Float);
@@ -219,6 +219,7 @@ namespace Fcos{
                     job.mono_tensor->release();
                 }
                 engine->forward(false);
+                // printf("当前推理***********************\n");
                 output_array_device.to_gpu(false);
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job                 = fetch_jobs[ibatch];
@@ -230,9 +231,11 @@ namespace Fcos{
 
                     decode_kernel_invoker(image_pred_output, output->size(1), num_classes, confidence_threshold_, affine_matrix, output_array_ptr, MAX_IMAGE_BBOX, stream_);
                     recount_box(output_array_ptr, input_height_, input_width_, MAX_IMAGE_BBOX, stream_);
+                    // output_array_device.save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/output-no-nms");
                     if(nms_method_ == NMSMethod::FastGPU){
                         nms_kernel_invoker(output_array_ptr, nms_threshold_, MAX_IMAGE_BBOX, stream_);
                     }
+                    // output_array_device.save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/output-has-nms");
                 }
 
                 // compute mask
@@ -266,8 +269,10 @@ namespace Fcos{
                             float* feat_out_tensor = feat_out_device.gpu<float>();
                             float* mask_pred       = mask_pred_device.gpu<float>();
                             uint8_t* box_mask = box_mask_device.gpu<uint8_t>();
+
                             result_object_box.seg =
                                 make_shared<InstanceSegmentMap>(box_mask_width, box_mask_height);
+                            
                             uint8_t* mask_out_host = result_object_box.seg->data;
                             checkCudaRuntime(cudaMemcpyAsync(box_tensor+1, pbox, 4 * sizeof(float), cudaMemcpyHostToDevice, stream_));
                             checkCudaRuntime(cudaMemcpyAsync(feat_tensor, pbox + 7, 784 * sizeof(float), cudaMemcpyHostToDevice, stream_));
@@ -347,7 +352,6 @@ namespace Fcos{
             memcpy(image_host, image.data, size_image_old);
             memcpy(affine_matrix_host, job.additional.d2i, sizeof(job.additional.d2i));
             checkCudaRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, stream_));
-            checkCudaRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, stream_));
             checkCudaRuntime(cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(job.additional.d2i), cudaMemcpyHostToDevice, stream_));
 
             CUDAKernel::warp_affine_bilinear_and_normalize_plane(
@@ -362,7 +366,7 @@ namespace Fcos{
             //     image_device, image.cols, image.rows, tensor->gpu<float>(), input_width_, input_height_, channel, normalize_, stream_   
             // );
 
-            // tensor->save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/JT-imgs/2222/ttt");
+            // tensor->save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/tmp");
 
             return true;
         }
