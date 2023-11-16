@@ -495,13 +495,35 @@ namespace CUDAKernel{
                 int dstIdx_c0 = dy * dst_width + dx;
                 int dstIdx_c1 = dstIdx_c0 + dst_area;
                 int dstIdx_c2 = dstIdx_c1 + dst_area;
-                // dst[dstIdx_c0] = (c0 - norm.mean[0]) / norm.std[0];
-                // dst[dstIdx_c1] = (c1 - norm.mean[1]) / norm.std[1];
-                // dst[dstIdx_c2] = (c2 - norm.mean[2]) / norm.std[2];
+                dst[dstIdx_c0] = (c0 - norm.mean[0]) / norm.std[0];
+                dst[dstIdx_c1] = (c1 - norm.mean[1]) / norm.std[1];
+                dst[dstIdx_c2] = (c2 - norm.mean[2]) / norm.std[2];
 
+                // dst[dstIdx_c0] = c0;
+                // dst[dstIdx_c1] = c1;
+                // dst[dstIdx_c2] = c2;
+            }
+        }
+
+    static __global__ void resize_and_norm_plane_kernel_ch1(uint8_t* src, int src_width, int src_height, float* dst, int dst_width, int dst_height, int channels, Norm norm, int edge){
+
+             int position = blockDim.x * blockIdx.x + threadIdx.x;
+            if (position >= edge) return;
+
+            int dx      = position % dst_width;
+            int dy      = position / dst_width;
+            float c0;
+            int dst_area = dst_width * dst_height;
+            if (dx < dst_width && dy < dst_height) {
+                if (dx < src_width && dy < src_height) {
+                    int srcIdx_c0 = (dy * src_width + dx) * channels + 0;
+                    c0 = src[srcIdx_c0];
+                } else {
+                    c0 = 0.0f;
+                }
+                int dstIdx_c0 = dy * dst_width + dx;
+                // dst[dstIdx_c0] = (c0 - norm.mean[0]) / norm.std[0];
                 dst[dstIdx_c0] = c0;
-                dst[dstIdx_c1] = c1;
-                dst[dstIdx_c2] = c2;
             }
         }
 
@@ -513,8 +535,13 @@ namespace CUDAKernel{
             int jobs   = dst_width * dst_height;
             auto grid  = CUDATools::grid_dims(jobs);
             auto block = CUDATools::block_dims(jobs);
-
-            checkCudaKernel(resize_and_norm_plane_kernel << <grid, block, 0, stream >> > (src,src_width, src_height, dst,dst_width, dst_height, channels, norm, jobs));
+            if (channels == 3){
+                checkCudaKernel(resize_and_norm_plane_kernel << <grid, block, 0, stream >> > (src,src_width, src_height, dst,dst_width, dst_height, channels, norm, jobs));
+            }
+            else{
+                checkCudaKernel(resize_and_norm_plane_kernel_ch1 << <grid, block, 0, stream >> > (src,src_width, src_height, dst,dst_width, dst_height, channels, norm, jobs));
+            }
+            
         }
 
 	void warp_affine_bilinear_and_normalize_plane(
