@@ -21,6 +21,9 @@
 *.zip
 *.jpg
 *.bmp
+*.pyc
+*.json
+
 
 # Logs and databases #
 ######################
@@ -39,13 +42,16 @@ ehthumbs.db
 Thumbs.db
 
 ! workspace/*.py
-workspace/code/ptq/quantization/__pycache__/quantize.cpython-38.pyc
-workspace/code/ptq/quantization/__pycache__/rules.cpython-38.pyc
-workspace/code/trt/data/data2/data_merge.json
-workspace/code/trt/data/data2/inf/new1/fp16/data-trt-fp16.json
-workspace/code/trt/data/data2/inf/new1/json/data-trt-fp16.json
-workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq-all-train10.json
-workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq-all-train500.json
-workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq-all-train8000.json
-workspace/code/trt/data/data2/inf/new1/json/data-trt-ptq.json
-workspace/code/trt/data/data2/inf/new1/json/model_0413999.json
+workspace/code/ptq-yolo/yolov5/
+workspace/code/ptq-yolo/yolov7/
+workspace/code/ptq-yolo/weights/
+workspace/code/ptq-yolo/datasets/
+workspace/code/ptq-bdm/data/
+workspace/code/ptq-bdm/model/
+workspace/train.json
+workspace/eval/
+workspace/models/
+workspace/code/ptq-bdm/data/data2/
+
+
+workspace/code/ptq-bdm/tmp.py
