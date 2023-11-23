@@ -16,11 +16,15 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 
 
 
-./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/ptq-all-train10.onnx \
-          --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/model_0413999-orig-ptq-train10 \
-          --fp16 --int8 \
-          --device=3 \
-          --workspace=10240
+# ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model_0413999-orig.onnx \
+#           --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model3/ptq-all-trainall_hasrule-all-basicblock100 \
+#           --fp16 --int8 \
+#           --device=0 \
+#           --workspace=10240 \
+#           --exportLayerInfo=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model3/ptq-all-trainall_hasrule-all-basicblock100-layer.json \
+#           --profilingVerbosity=detailed  \
+#           --exportProfile=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model3/ptq-all-trainall_hasrule-all-basicblock100_profile.json
+
 
 # 转换mask分支
 # ./trtexec --onnx=/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/blender-new-boxMask-nogrid-samples.onnx \

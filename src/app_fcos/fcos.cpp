@@ -177,7 +177,7 @@ namespace Fcos{
             
             input_width_       = input->size(3);
             input_height_      = input->size(2);
-            tensor_allocator_  = make_shared<MonopolyAllocator<TRT::Tensor>>(max_batch_size * 2);
+            tensor_allocator_  = make_shared<MonopolyAllocator<TRT::Tensor>>(10 * 2);
             stream_            = engine->get_stream();
             gpu_               = gpuid;
             result.set_value(true);
