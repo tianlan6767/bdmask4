@@ -52,3 +52,6 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 #           --profilingVerbosity=detailed > ./output.txt
 
 
+# ./trtexec --loadEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy-b5-5472 --shapes=input_image:1x3x4096x4096
+# ./trtexec --loadEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy-2048-b20 --shapes=input_image:20x3x2048x2048 --device=2
+# ./trtexec --loadEngine=/media/ps/data/train/LQ/task/bdm/infer/infer/workspace/yolov8n-seg.b1.transd-fp16.engine --shapes=images:1x3x640x640

@@ -112,8 +112,6 @@ namespace Fcos{
         return result;
     }
 
-
-
     using ControllerImpl = InferController
     <
         Mat,                    // input
@@ -169,7 +167,8 @@ namespace Fcos{
             TRT::Tensor box_grid_device(TRT::DataType::Float);
             TRT::Tensor box_mask_device(TRT::DataType::UInt8);
 
-            int max_batch_size = engine->get_max_batch_size();
+            // int max_batch_size = engine->get_max_batch_size();
+            int max_batch_size = 10;
             auto input         = engine->input();
             auto output        = engine->output(1);
             auto bases_out       = engine->output(0);
@@ -177,7 +176,7 @@ namespace Fcos{
             
             input_width_       = input->size(3);
             input_height_      = input->size(2);
-            tensor_allocator_  = make_shared<MonopolyAllocator<TRT::Tensor>>(10 * 2);
+            tensor_allocator_  = make_shared<MonopolyAllocator<TRT::Tensor>>(max_batch_size * 2);
             stream_            = engine->get_stream();
             gpu_               = gpuid;
             result.set_value(true);
@@ -207,35 +206,43 @@ namespace Fcos{
                 input->resize_single_dim(0, infer_batch_size);
                 input->resize_single_dim(2, input_height_);
                 input->resize_single_dim(3, input_width_);
+                bases_out->resize_single_dim(0, infer_batch_size);
                 bases_out->resize_single_dim(2, int(input_height_/4));
                 bases_out->resize_single_dim(3, int(input_width_/4));
+                output->resize_single_dim(0, infer_batch_size);
                 output->resize_single_dim(1,calculate(input_height_, input_width_));
+                
+                output_array_device.resize_single_dim(0, infer_batch_size);
+                affin_matrix_device.resize_single_dim(0, infer_batch_size);
+
+
 
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job  = fetch_jobs[ibatch];
                     auto& mono = job.mono_tensor->data();
+
                     affin_matrix_device.copy_from_gpu(affin_matrix_device.offset(ibatch), mono->get_workspace()->gpu(), 6);
                     input->copy_from_gpu(input->offset(ibatch), mono->gpu(), mono->count());
                     job.mono_tensor->release();
                 }
+
                 engine->forward(false);
-                // printf("当前推理***********************\n");
                 output_array_device.to_gpu(false);
+                
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job                 = fetch_jobs[ibatch];
                     float* image_pred_output = output->gpu<float>(ibatch);
-                    
                     float* output_array_ptr   = output_array_device.gpu<float>(ibatch);
                     auto affine_matrix        = affin_matrix_device.gpu<float>(ibatch);
-                    checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(float)*(1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT)*(max_batch_size), stream_));
+
+                    checkCudaRuntime(cudaMemsetAsync(output_array_ptr, 0, sizeof(float)*(1 + MAX_IMAGE_BBOX * NUM_BOX_ELEMENT), stream_));
 
                     decode_kernel_invoker(image_pred_output, output->size(1), num_classes, confidence_threshold_, affine_matrix, output_array_ptr, MAX_IMAGE_BBOX, stream_);
                     recount_box(output_array_ptr, input_height_, input_width_, MAX_IMAGE_BBOX, stream_);
-                    // output_array_device.save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/output-no-nms");
                     if(nms_method_ == NMSMethod::FastGPU){
                         nms_kernel_invoker(output_array_ptr, nms_threshold_, MAX_IMAGE_BBOX, stream_);
                     }
-                    // output_array_device.save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/output-has-nms");
+                    
                 }
 
                 // compute mask
@@ -244,7 +251,6 @@ namespace Fcos{
                     float* parray = output_array_device.cpu<float>(ibatch);
                     int count     = min(MAX_IMAGE_BBOX, (int)*parray);
                     
-                    auto bases_out       = engine->output(0);
                     float* base_tensor = bases_out->gpu<float>(ibatch);
 
                     auto& job     = fetch_jobs[ibatch];
@@ -308,6 +314,11 @@ namespace Fcos{
                 INFOE("tensor_allocator_ is nullptr");
                 return false;
             }
+            
+            if(image.empty()){
+                INFOE("Image is empty");
+                return false;
+            }
 
             job.mono_tensor = tensor_allocator_->query();
             if(job.mono_tensor == nullptr){
@@ -343,12 +354,7 @@ namespace Fcos{
             float* affine_matrix_host     = (float*)cpu_workspace;
             uint8_t* image_host           = size_matrix + cpu_workspace;
 
-            //checkCudaRuntime(cudaMemcpyAsync(image_host,   image.data, size_image, cudaMemcpyHostToHost,   stream_));
             // speed up
-            // memcpy(image_host, image.data, size_image);
-            // TRT::Tensor src_device(TRT::DataType::UInt8);
-            // src_device.resize(image.rows, image.cols, channel);
-            // uint8_t* image_device = src_device.gpu<uint8_t>();
             memcpy(image_host, image.data, size_image_old);
             memcpy(affine_matrix_host, job.additional.d2i, sizeof(job.additional.d2i));
             checkCudaRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, stream_));
@@ -365,9 +371,6 @@ namespace Fcos{
             // CUDAKernel::resize_and_norm_plane(
             //     image_device, image.cols, image.rows, tensor->gpu<float>(), input_width_, input_height_, channel, normalize_, stream_   
             // );
-
-            // tensor->save_to_file("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/tmp1-inf2/tmp");
-
             return true;
         }
 
@@ -377,6 +380,8 @@ namespace Fcos{
 
         virtual std::shared_future<BoxArray> commit(const Mat& image) override{
             return ControllerImpl::commit(image);
+        
+
         }
 
     private:

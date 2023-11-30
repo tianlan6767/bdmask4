@@ -101,9 +101,9 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats=None):
         merge_ctrness_pred.append(out_ctrness_pred)
     merge_logits_pred = torch.cat(merge_logits_pred, 1)
     merge_logits_pred_max = torch.max(merge_logits_pred, 2)[0][:,:,None]
-    merge_box_regression = torch.cat(merge_box_regression, 1)[0]
+    merge_box_regression = torch.cat(merge_box_regression, 1)
     merge_top_feat = torch.cat(merge_top_feat, 1) 
-    pred = torch.cat([merge_box_regression[None], merge_logits_pred_max, merge_logits_pred, merge_top_feat], 2)
+    pred = torch.cat([merge_box_regression, merge_logits_pred_max, merge_logits_pred, merge_top_feat], 2)
     return pred
 
     
@@ -190,13 +190,13 @@ def main():
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016.pth",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-batch10.onnx",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -214,7 +214,7 @@ def main():
     config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:3"
+    cfg.MODEL.DEVICE = "cuda:0"
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
     cfg.MODEL.FCOS.NUM_CLASSES = 25
 
@@ -272,11 +272,11 @@ def main():
         input_names=input_names,
         output_names=output_names,
         keep_initializers_as_inputs=False,
-        opset_version=11,
+        opset_version=11,       
         dynamic_axes = {
             "input_image":{0:"batch", 2:"h", 3:"w"},
-            "bases":{0:"batch", 2: "bases_h", 3:"bases_w"},
-            "pred":{0:"batch", 1:"pred_nums"}
+            "bases":{0:"batch", 2:"bases_h", 3:"bases_w"},
+            "pred":{0:"batch", 1:"pred_num"}
         } if args.dynamic else None
     )
 
