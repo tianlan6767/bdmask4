@@ -15,6 +15,7 @@ namespace Fcos{
                                         float* invert_affine_matrix, float* parray, int max_objects){  
 
         int position = blockDim.x * blockIdx.x + threadIdx.x;
+        // printf("当前位置-%d\n", position);
 		if (position >= num_bboxes) return;
 
         float* pitem     = predict + (5 + num_classes + 784) * position;

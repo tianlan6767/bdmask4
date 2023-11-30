@@ -86,8 +86,8 @@ def init(key, iv):
     cfg.DATASETS.TEST = ("phone",)   # no metrics implemented for this dataset
 
     cfg.DATALOADER.NUM_WORKERS = 0
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 50
-    cfg.MODEL.FCOS.NUM_CLASSES = 50
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25
+    cfg.MODEL.FCOS.NUM_CLASSES = 25
 
 
     img_size = 2048
@@ -95,7 +95,7 @@ def init(key, iv):
     cfg.INPUT.MIN_SIZE_TRAIN = img_size
     cfg.INPUT.MAX_SIZE_TEST = img_size
     cfg.INPUT.MIN_SIZE_TEST = img_size
-    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/used/model_0413999.pth"
+    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124.pth"
     
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
     cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.09
@@ -128,14 +128,15 @@ def init(key, iv):
     # cfg.MODEL.TEST_FLOAT16 = True
     
     cfg.MODEL.FCOS.CENTER_SAMPLE = "center"
+    cfg.MODEL.BASIS_MODULE.LOSS_ON=False
 
-    cfg.INPUT.FORMAT = 'L'
-    cfg.MODEL.PIXEL_MEAN = [90]
-    cfg.MODEL.PIXEL_STD = [77]
+    # cfg.INPUT.FORMAT = 'L'
+    # cfg.MODEL.PIXEL_MEAN = [90]
+    # cfg.MODEL.PIXEL_STD = [77]
 
-    # cfg.INPUT.FORMAT = 'BGR'
-    # cfg.MODEL.PIXEL_MEAN = [41, 41, 41]
-    # cfg.MODEL.PIXEL_STD = [34, 34, 34]
+    cfg.INPUT.FORMAT = 'BGR'
+    cfg.MODEL.PIXEL_MEAN = [57.14, 55.92, 56.19]
+    cfg.MODEL.PIXEL_STD = [61.46, 61.27, 61.23]
 
 
     # cfg.MODEL.RESNETS.DEFORM_ON_PER_STAGE = [True, True, True, True]
@@ -164,7 +165,7 @@ def predict(*image):
     et = round(st2 - st1, 3)
     # print("dsfd", et)
     # print(original_images)
-    sub_save_dir = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/inf/news/pth_inf"
+    sub_save_dir = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/pth-inf1124-nonpz"
     if not os.path.exists(sub_save_dir):
         os.makedirs(sub_save_dir, exist_ok=True)
     if len(original_images[0].shape) == 2:
@@ -181,7 +182,7 @@ def predict(*image):
     v = v.draw_instance_predictions(outputs[0]["instances"].to("cpu"))
     # plt.imshow(v.get_image()[:, :, ::-1])
 
-    cv2.imwrite(osp.join(sub_save_dir, imn_orig), v.get_image()[:, :, ::-1])
+    cv2.imwrite(osp.join(sub_save_dir, imn_orig.replace(".bmp", ".jpg")), v.get_image()[:, :, ::-1])
 
     
     for output in outputs:
@@ -189,7 +190,8 @@ def predict(*image):
         scores.append(predictions.scores.tolist())
         classes.append(predictions.pred_classes.tolist())
         # masks.append(np.asarray(predictions.pred_masks))
-        # boxs.append(np.asarray(predictions.pred_boxes))
+        # print(predictions.pred_boxes.tensor.tolist())
+        boxs.append(np.asarray(predictions.pred_boxes.tensor.tolist()))
         pred_masks_gpu = output["instances"].pred_masks
         masks_lst = []
         for pred_mask in pred_masks_gpu:
@@ -201,7 +203,10 @@ def predict(*image):
     #         for s, cid, b in zip(score, classid, box):
     #             print(s,"**", cid)
     #             # pass
-    print("保存的图片名称",imn_orig, scores, classes, boxs)
+    if len(scores):
+        print("保存的图片名称",imn_orig)
+        for score, cid, box in zip(scores[0], classes[0], boxs[0]):
+            print(round(score,3), cid, box)
     
     return [scores, classes, masks], et
 
@@ -253,7 +258,7 @@ if __name__ == "__main__":
     global imn_orig
     np.set_printoptions(suppress=True)
     init("8Xe0efbbhSPHmaw0", "OwXaWuIhMzErsKl5")
-    src = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/val"
+    src = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/imgs"
 
     # dst = r"/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/pinf5"
     # if not os.path.exists(dst):
@@ -314,7 +319,7 @@ if __name__ == "__main__":
 
         imn = osp.basename(imp)
         imn_orig = imn
-        img = cv2.imread(imp, 0)
+        img = cv2.imread(imp, 1)
         result = predict(*[img])
         times.append(result[1])
         # im.append(img)
