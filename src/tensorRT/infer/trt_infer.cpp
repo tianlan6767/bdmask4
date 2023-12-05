@@ -271,20 +271,17 @@ namespace TRT {
 			const char* bindingName = context->engine_->getBindingName(i);
 			dims.d[0] = max_batchsize;
             if (strcmp(bindingName,"input_image") == 0){
-                dims.d[2] = 4096;
-                dims.d[3] = 8192;
+                dims.d[2] = 128;
+                dims.d[3] = 128;
             }
             else if(strcmp(bindingName,"bases") == 0){
-                dims.d[2] = 1024;
-                dims.d[3] = 2048;
+                dims.d[2] = 32;
+                dims.d[3] = 32;
             }
             else if(strcmp(bindingName,"pred") == 0){
-                dims.d[1] = 698368;
+                dims.d[1] = 341;
             }
-            else if(strcmp(bindingName,"mask_pred") == 0){
-                dims.d[1] = 4096;
-                dims.d[2] = 8192;
-            }
+
 			auto newTensor = make_shared<Tensor>(dims.nbDims, dims.d, convert_trt_datatype(type));
 			newTensor->set_stream(this->context_->stream_);
 			newTensor->set_workspace(this->workspace_);
