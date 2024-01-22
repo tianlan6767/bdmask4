@@ -23,10 +23,20 @@ import types
 import torch
 from torch.nn import functional as F
 from copy import deepcopy
+from torchvision.ops import roi_align 
 from onnxsim import simplify
 import onnx
+import math
 import os.path as osp
 import os
+import cv2
+from glob import glob
+import imagesize
+import numpy as np
+import json
+from tqdm import tqdm
+
+import sys
 
 import quantization.quantize as quantize
 
@@ -35,8 +45,22 @@ from detectron2.checkpoint import DetectionCheckpointer
 
 from adet.config import get_cfg
 from adet.modeling import FCOS, BlendMask
-
-from detectron2.data import build_detection_test_loader
+from detectron2.evaluation import (
+    COCOEvaluator,
+    COCOPanopticEvaluator,
+    DatasetEvaluators,
+    LVISEvaluator,
+    PascalVOCDetectionEvaluator,
+    SemSegEvaluator,
+    verify_results,
+)
+from detectron2.data import (
+    MetadataCatalog,
+    DatasetCatalog,
+    DatasetFromList,
+    build_detection_test_loader,
+    build_detection_train_loader,
+)
 
 from detectron2.evaluation import (
     DatasetEvaluator,
@@ -49,17 +73,40 @@ from detectron2.utils.visualizer import GenericMask
 from detectron2.data.datasets import register_coco_instances
 
 train_dataset_name = "phone_train"
+val_dataset_name = "phone_val"
+# jf_val = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/val/train.json'
+# imgs_val = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/val'
+# register_coco_instances(val_dataset_name, {}, jf_val, imgs_val)
 
 jf_train = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/imgs_jpg-1207/train/train_jpg/train.json'
 imgs_train = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/imgs_jpg-1207/train/train_jpg'
 register_coco_instances(train_dataset_name, {}, jf_train, imgs_train)
 
+
+
+import time
+def time_synchronized():
+    torch.cuda.synchronize()
+    return time.time()
+
+class SummaryTool:
+    def __init__(self, file):
+        self.file = file
+        self.data = []
+
+    def append(self, item):
+        self.data.append(item)
+        json.dump(self.data, open(self.file, "w"), indent=4)
+
+
 def patch_blendmask(model):
     def forward(self, tensor):
         images = None
         gt_instances = None
-        basis_sem = None   
-        features = self.backbone(tensor)    
+        basis_sem = None
+        
+        features = self.backbone(tensor)
+        
         basis_out, _ = self.basis_module(features, basis_sem)
         proposals  = self.proposal_generator(images, features, gt_instances, self.top_layer)
         return basis_out["bases"][0], proposals
@@ -178,6 +225,96 @@ def patch_fcos_head(cfg, fcos_head):
     fcos_head.forward = types.MethodType(fcos_head_forward, fcos_head)
 
 
+def create_train_dataloader(cfg, dataset, batch_size=1, rank=-1, world_size=1, workers=8):
+    imps = glob(dataset + "/*.jpg")
+    jf = glob(dataset + "/*.json")[0]
+    if jf:
+        pass
+        
+    batch_size = min(batch_size, len(dataset))
+    nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset) if rank != -1 else None
+    train_mapper = []
+    for imp in imps:
+        image = cv2.imread(imp, -1)
+        if cfg.INPUT.FORMAT == "L":
+            image = torch.as_tensor(image.astype("float32"))
+            image = np.squeeze(image)
+        else:
+            if len(image.shape) == 2:
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            else:
+                image = image
+            image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+            
+        
+        w, h = imagesize.get(imp)
+        train_mapper.append(
+            {   
+                "image":image,
+                "filename":imp,
+                "height":int(h),
+                "width":int(w),
+            }
+        )
+    return torch.utils.data.DataLoader(train_mapper,
+                                       batch_size=batch_size,
+                                       num_workers=nw,
+                                       sampler=sampler,
+                                       pin_memory=True)
+
+
+
+
+def infertojson(model, dataloader, name, save_dir):
+    jf_save_dir = osp.join(save_dir, "infer")
+    if not osp.exists(jf_save_dir):
+        os.makedirs(jf_save_dir, exist_ok=True)
+    infer_jf = osp.join(jf_save_dir, f"{name}.json")
+    if  osp.exists(infer_jf):
+        return
+    infer_jd = {}
+    model.eval()
+    with torch.no_grad():
+        for _, inputs in tqdm(enumerate(dataloader), total=len(dataloader), desc=f"推理並保存{name}.json"):
+            imns = [osp.basename(inp['file_name']) for inp in inputs]
+            infer_t0 = time_synchronized()
+            outputs = model(inputs)
+            infer_t1 = time_synchronized()
+            print('当前推理耗时:', round(infer_t1 - infer_t0, 3))
+            
+            for imn, output in zip(imns, outputs):
+                predictions = output["instances"].to("cpu")
+                pred_scores = predictions.scores.tolist()
+                pred_classes = predictions.pred_classes.tolist()
+                pred_masks = np.asarray(predictions.pred_masks)
+                masks = [GenericMask(x, predictions.image_size[0], predictions.image_size[1]) for x in np.asarray(pred_masks)]
+                pred_masks = [mask.polygons for mask in masks]    # 一个推测结果也可能有多个标注，尤其是线状多个圈圈组合
+                regions = []
+                for index in range(len(pred_scores)):
+                    for mask in pred_masks[index]:      # 拆分一个instance多个分段描框
+                        points = np.array(mask,dtype=np.int32).tolist()
+                        new_dict = {'shape_attributes':{'all_points_x':points[::2],'all_points_y':points[1::2]},
+                                'region_attributes':{'regions':str(pred_classes[index]+1),"score":round(pred_scores[index],4)}}
+                        regions.append(new_dict)
+
+                infer_jd[imn] = {
+                    "filename": imn,
+                    "regions": regions,
+                    "type": "inf"
+                }
+    with open(infer_jf, "w") as f:
+        json.dump(infer_jd, f)
+        print(f"保存成功:{infer_jf}")
+
+
+# 评估coco-seg
+def evaluate_coco(model, dataset_name,  dataloader):
+    evaluator = COCOEvaluator(dataset_name, ("bbox", "segm"), True)
+    res_ap = inference_on_dataset(model, dataloader, evaluator)
+    return res_ap
+
+
 def export_onnx(cfg, args, model : BlendMask, onnx_path):
     
     input_names = ["input_image"]
@@ -214,7 +351,28 @@ def export_onnx(cfg, args, model : BlendMask, onnx_path):
     onnx.save(model_simp, onnx_path)
     print("Done. The onnx model is saved into {}.".format(onnx_path))
 
-def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=False, ignore_policy=None, supervision_stride=1, iters=100):
+
+def cmd_export(cfg, args, model):
+    model_name = osp.basename(cfg.MODEL.WEIGHTS)
+    onnx_path = osp.join(args.output, model_name.replace(".pth", ".onnx"))
+    
+    quantize.initialize()
+    # model.load_state_dict(torch.load(cfg.MODEL.WEIGHTS, map_location="cpu"))
+    model = torch.load(cfg.MODEL.WEIGHTS, map_location="cpu")
+    model.to(cfg.MODEL.DEVICE)
+    export_onnx(cfg, args, model, onnx_path)
+    # quantize.export_onnx(model, input, onnx_path, opset_version=11, 
+    #     input_names=input_names, output_names=output_names, export_params=True,
+    #     dynamic_axes = {
+    #         "input_image":{2:"h", 3:"w"},
+    #         "bases":{2: "bases_h", 3:"bases_w"},
+    #         "pred":{1:"pred_nums"}
+    #     } if dynamic else None
+    # )
+    # print(f"Save onnx to {onnx_path}")
+
+
+def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=False, ignore_policy=None, supervision_stride=1, iters=1):
     
     model_name = osp.basename(cfg.MODEL.WEIGHTS).rsplit(".")[0]
     save_ptq = osp.join(save_dir, model_name + "_ptq.pth")
@@ -240,11 +398,95 @@ def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=False, 
     # 自定义量化层，忽略指定量化层
     quantize.replace_to_quantization_module(model, ignore_policy)
 
+    # 特定层量化
+    # quantize.apply_custom_rules_to_quantizer(cfg, args, model, export_onnx)
+
     # 标定模型
     quantize.calibrate_model(cfg, model, train_dataloader, device, num_batch=iters)
+
+    # json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
+    # summary_file = os.path.join(json_save_dir, "summary.json")
+    # summary = SummaryTool(summary_file)
+
+    # if eval_origin:
+    #     print("Evaluate Origin...")
+    #     with quantize.disable_quantization(model):
+    #         infertojson(model, val_dataloader, "orig_8050", json_save_dir)
+    #         ap = evaluate_coco(model, val_dataset_name, val_dataloader)
+    #         summary.append(["Origin", ap])
+
+    # if eval_ptq:
+    #     print("Evaluate PTQ...")
+    #     infertojson(model, val_dataloader, "ptq_8050", json_save_dir)
+    #     ap = evaluate_coco(model, val_dataset_name, val_dataloader)
+    #     summary.append(["PTQ", ap])
     
-    #导出模型
-    export_onnx(cfg, args, model, osp.join(save_dir, f"ptq-{iters}.onnx"))
+    # if save_ptq:
+    #     print(f"Save ptq model to {save_ptq}")
+    #     # torch.save(model.state_dict(), save_ptq)
+    #     torch.save(model, save_ptq)
+    
+    export_onnx(cfg, args, model, osp.join(save_dir, f"ptq-all-trainall_hasrule-all-basicblock{iters}.onnx"))
+    
+    if save_qat is None:
+        print("Done as save_qat is None.")
+        return
+
+
+def infer(model, data_loader, num_batch=200):
+    model.eval()
+    quantize.disable_quantization(model)
+    with torch.no_grad():
+            for i, datas in tqdm(enumerate(data_loader), total=min(len(data_loader), num_batch), desc="Collect stats for calibrating"):
+                inf_t0 = time_synchronized()
+                model(datas)
+                inf_t1 = time_synchronized()
+                print("当前耗时推理耗时:", inf_t1 - inf_t0)
+                if i >= num_batch:
+                    break
+
+# 敏感层分析
+def cmd_sensitive_analysis(cfg, model, save_dir, eval_origin=True, eval_ptq=True, ignore_policy=None, supervision_stride=1, num_batch=500):
+    quantize.initialize()
+    device  = torch.device(cfg.MODEL.DEVICE)
+    
+    #数据集准备
+    train_dataloader = build_detection_test_loader(cfg, train_dataset_name)
+    val_dataloader   = build_detection_test_loader(cfg, val_dataset_name)
+    
+    # 原始模型分析
+    infertojson(model, val_dataloader, "orig_3280", save_dir)
+    quantize.replace_to_quantization_module(model)
+    quantize.calibrate_model(cfg, model, train_dataloader, device, num_batch=num_batch)
+    
+    # summary_file = os.path.join(save_dir, "summary_sensitive_analysis.json")
+    # summary = SummaryTool(summary_file)
+    # print("Evaluate PTQ...")
+    # ap = evaluate_coco(model, val_dataset_name, val_dataloader)
+    # summary.append([ap, "PTQ"])
+
+    infertojson(model, val_dataloader, "ptq-all", save_dir)
+    
+    print("Sensitive analysis by each layer...")
+    def recursive_and_replace_module(module, prefix=""):
+        for name in module._modules:
+            layer = module._modules[name]
+            path      = name if prefix == "" else prefix + "." + name
+            recursive_and_replace_module(layer, path)
+            if quantize.have_quantizer(layer) and ("quantizer" not in path) and ("_input_quantizer" in layer._modules.keys()):
+                print("当前layer敏感层分析: ", path)
+                quantize.disable_quantization(layer).apply()
+                infertojson(model, val_dataloader, f"model.{path}", save_dir)
+                # ap = evaluate_coco(model, val_dataset_name,  val_dataloader)
+                # summary.append([ap, f"model.{path}"])
+                quantize.enable_quantization(layer).apply()
+            else:
+                print(f"ignore model.{path} because it is {type(layer)}")
+    recursive_and_replace_module(model)
+    # summary = sorted(summary.data, key=lambda x:x[0], reverse=True)
+    # print("Sensitive summary:")
+    # for n, (ap, name) in enumerate(summary[:10]):
+    #     print(f"Top{n}: Using fp16 {name}, ap = {ap:.5f}")
 
 def setup(args):
     # train.py -----------------------------------------------------------------------------------------
@@ -297,13 +539,13 @@ def main():
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124.pth",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1121.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/model_no",
+        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/model_PTQ",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -319,20 +561,42 @@ def main():
 
     model = build_model(cfg)
 
-    checkpointer = DetectionCheckpointer(model)
-    _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
+    if args.ptq:
+        checkpointer = DetectionCheckpointer(model)
+        _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
     
     model.to(cfg.MODEL.DEVICE)
     model.eval()
 
+    # ignore_policy = ['proposal_generator.fcos_head.cls_logits', 
+    #                  'top_layer', 
+    #                  'proposal_generator.fcos_head.ctrness', 
+    #                  'proposal_generator.fcos_head.bbox_pred',
+    #                  "backbone.bottom_up.stem.conv1"
+    #                  "backbone.bottom_up.res2.0.conv1",
+    #                  "backbone.bottom_up.res2.0.conv2"]
+
     ignore_policy = ['top_layer']
     # 量化模型
-    if args.ptq:
-        cmd_quantize(cfg, args, model, args.output, ignore_policy=ignore_policy, iters=1)
+    
+    # for name, layer in model.named_modules():
+    #     print(name, layer)
+    cmd_quantize(cfg, args, model, args.output, ignore_policy=ignore_policy, iters=1)
+    
 
-    #单独导出模型
-    else:
-        export_onnx(cfg, args, model, osp.join(args.output,"fcos.onnx"))
+    # 敏感层分析
+    # cmd_sensitive_analysis(cfg, model, args.output)
+
+
+    # print(model)    
+    # if not osp.exists(osp.dirname(args.output)):
+    #     os.makedirs(osp.dirname(args.output), exist_ok=True)
+    
+
+    
+    # export_onnx(cfg, args, model, osp.join(args.output, "static.onnx"))
+    
+    # # cmd_export(cfg, args, model)
     
 if __name__ == "__main__":
     main()

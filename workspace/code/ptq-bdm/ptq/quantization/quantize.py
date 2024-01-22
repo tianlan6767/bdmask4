@@ -259,49 +259,6 @@ def replace_to_quantization_module(model : torch.nn.Module, ignore_policy : Unio
 
     recursive_and_replace_module(model)
 
-
-def get_attr_with_path(m, path):
-    def sub_attr(m, names):
-        name = names[0]
-        value = getattr(m, name)
-
-        if len(names) == 1:
-            return value
-
-        return sub_attr(value, names[1:])
-    return sub_attr(m, path.split("."))
-
-
-def apply_custom_rules_to_quantizer(cfg, args, model : torch.nn.Module, export_onnx : Callable):
-
-    # apply rules to graph
-    # onnx_path = osp.join(args.output, "quantization-custom-rules-temp.onnx")
-    
-    # export_onnx(cfg, args, model, onnx_path)
-    # pairs = find_quantizer_pairs(onnx_path)
-    # for major, sub in pairs:
-    #     print(f"Rules: {sub} match to {major}")
-    #     get_attr_with_path(model, sub)._input_quantizer = get_attr_with_path(model, major)._input_quantizer
-    # os.remove(onnx_path)
-
-    for name, module in model.named_modules():
-        if module.__class__.__name__ == "Bottleneck":
-            if module.add:
-                print(f"Rules: {name}.add match to {name}.cv1")
-                major = module.cv1.conv._input_quantizer
-                module.addop._input0_quantizer = major
-                module.addop._input1_quantizer = major
-        elif module.__class__.__name__ == "BasicBlock":
-            module.__class__.forward = basicblock_quant_forward
-            # if hasattr(module, "addop"):
-            #     print("当前是add节点", name)
-            #     major = module.conv2._input_quantizer
-            #     module.addop._input0_quantizer = major
-            #     # module.addop._input1_quantizer = major
-            # else:
-            #     major = module.conv2._input_quantizer
-            #     module.shortcut._input_quantizer = major
-
 def calibrate_model(cfg, model : torch.nn.Module,  dataloader,  device, num_batch=10000):
 
     def compute_amax(model, **kwargs):
