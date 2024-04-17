@@ -35,13 +35,15 @@ import imagesize
 import numpy as np
 import json
 from tqdm import tqdm
-
+import torch.nn as nn
+from pytorch_quantization import nn as quant_nn
 import sys
 
 import quantization.quantize as quantize
 
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
+
 
 from adet.config import get_cfg
 from adet.modeling import FCOS, BlendMask
@@ -71,15 +73,16 @@ from detectron2.evaluation import (
 from detectron2.utils.visualizer import GenericMask
 
 from detectron2.data.datasets import register_coco_instances
+from detectron2.layers import Conv2d
 
 train_dataset_name = "phone_train"
 val_dataset_name = "phone_val"
-# jf_val = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/val/train.json'
-# imgs_val = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/data/data2/val'
-# register_coco_instances(val_dataset_name, {}, jf_val, imgs_val)
+jf_val = '/media/ps/data/train/LQ/task/prune/data/Q4/val-coco.json'
+imgs_val = '/media/ps/data/train/LQ/task/prune/data/Q4/val'
+register_coco_instances(val_dataset_name, {}, jf_val, imgs_val)
 
-jf_train = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/imgs_jpg-1207/train/train_jpg/train.json'
-imgs_train = '/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/imgs_jpg-1207/train/train_jpg'
+jf_train = '/media/ps/data/train/LQ/task/prune/data/Q4/annotations/train.json'
+imgs_train = '/media/ps/data/train/LQ/task/prune/data/Q4/train'
 register_coco_instances(train_dataset_name, {}, jf_train, imgs_train)
 
 
@@ -271,8 +274,8 @@ def infertojson(model, dataloader, name, save_dir):
     if not osp.exists(jf_save_dir):
         os.makedirs(jf_save_dir, exist_ok=True)
     infer_jf = osp.join(jf_save_dir, f"{name}.json")
-    if  osp.exists(infer_jf):
-        return
+    # if  osp.exists(infer_jf):
+    #     return
     infer_jd = {}
     model.eval()
     with torch.no_grad():
@@ -371,8 +374,48 @@ def cmd_export(cfg, args, model):
     # )
     # print(f"Save onnx to {onnx_path}")
 
+def cmp(model, model2):
+    model0_tmp_conv = []
+    model0_tmp_bn = []
 
-def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=False, ignore_policy=None, supervision_stride=1, iters=1):
+    model3_tmp_conv = []
+    model3_tmp_bn = []
+
+    for name, module in model.named_modules():
+        if isinstance(module, Conv2d):
+            print("detectron2", name, type(module))
+            model0_tmp_conv.append((name, module))
+            # print((module.weight ==  eval(f"model2.{name}").weight).all())
+            # print("***************************************************************")
+        elif isinstance(module, nn.Conv2d):
+            print("torch",name, type(module))
+            model0_tmp_conv.append((name, module))
+            # print((module.weight ==  eval(f"model2.{name}").weight).all())
+            # print("***************************************************************")
+        elif isinstance(module, nn.BatchNorm2d):
+            model0_tmp_bn.append((name, module))
+            # print(name, (module.weight ==  eval(f"model2.{name}").weight).all())
+            # print("***************************************************************")
+    # print(len(model0_tmp_conv), model0_tmp_conv)
+
+    for name, module in model2.named_modules():
+        if isinstance(module, quant_nn.QuantConv2d):
+            print("detectron2", name, type(module))
+            model3_tmp_conv.append((name, module))
+            # print((module.weight ==  eval(f"model2.{name}").weight).all())
+            # print("***************************************************************")
+        
+        elif isinstance(module, nn.BatchNorm2d):
+            model3_tmp_bn.append((name, module))
+            # print(name, (module.weight ==  eval(f"model2.{name}").weight).all())
+            # print("***************************************************************")
+    # print(len(model3_tmp_conv), model3_tmp_conv)
+    for (name1, conv), (name2, conv2) in zip(model0_tmp_conv[:-1], model3_tmp_conv):
+        if name1 == name2:
+            print(name1,(conv.weight == conv2.weight).all())
+
+
+def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=True, ignore_policy=None, supervision_stride=1, iters=1):
     
     model_name = osp.basename(cfg.MODEL.WEIGHTS).rsplit(".")[0]
     save_ptq = osp.join(save_dir, model_name + "_ptq.pth")
@@ -384,47 +427,49 @@ def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=False, 
     if save_qat and os.path.dirname(save_qat) != "":
         os.makedirs(os.path.dirname(save_qat), exist_ok=True)
     
-
+    model_orig = deepcopy(model)
     # 量化初始化
     quantize.initialize()
     device  = torch.device(cfg.MODEL.DEVICE)
 
     #数据集准备
     train_dataloader = build_detection_test_loader(cfg, train_dataset_name)
-    # val_dataloader   = build_detection_test_loader(cfg, val_dataset_name)
+    val_dataloader   = build_detection_test_loader(cfg, val_dataset_name)
     
+    json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
+    # infertojson(model, val_dataloader, "orig_82222", json_save_dir)
+    
+
+
     quantize.replace_bottleneck_forward(model)
 
     # 自定义量化层，忽略指定量化层
     quantize.replace_to_quantization_module(model, ignore_policy)
 
-    # 特定层量化
-    # quantize.apply_custom_rules_to_quantizer(cfg, args, model, export_onnx)
-
     # 标定模型
     quantize.calibrate_model(cfg, model, train_dataloader, device, num_batch=iters)
 
-    # json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
+
     # summary_file = os.path.join(json_save_dir, "summary.json")
     # summary = SummaryTool(summary_file)
 
-    # if eval_origin:
-    #     print("Evaluate Origin...")
-    #     with quantize.disable_quantization(model):
-    #         infertojson(model, val_dataloader, "orig_8050", json_save_dir)
-    #         ap = evaluate_coco(model, val_dataset_name, val_dataloader)
-    #         summary.append(["Origin", ap])
+    if eval_origin:
+        print("Evaluate Origin...")
+        with quantize.disable_quantization(model):
+            infertojson(model, val_dataloader, "orig_8050_disable_quantization", json_save_dir)
+            # ap = evaluate_coco(model, val_dataset_name, val_dataloader)
+            # summary.append(["Origin", ap])
 
-    # if eval_ptq:
-    #     print("Evaluate PTQ...")
-    #     infertojson(model, val_dataloader, "ptq_8050", json_save_dir)
+    if eval_ptq:
+        print("Evaluate PTQ...")
+        infertojson(model, val_dataloader, f"ptq-iters2{iters}", json_save_dir)
     #     ap = evaluate_coco(model, val_dataset_name, val_dataloader)
     #     summary.append(["PTQ", ap])
     
-    # if save_ptq:
-    #     print(f"Save ptq model to {save_ptq}")
-    #     # torch.save(model.state_dict(), save_ptq)
-    #     torch.save(model, save_ptq)
+    if save_ptq:
+        print(f"Save ptq model to {save_ptq}")
+        # torch.save(model.state_dict(), save_ptq)
+        torch.save(model, save_ptq)
     
     export_onnx(cfg, args, model, osp.join(save_dir, f"ptq-all-trainall_hasrule-all-basicblock{iters}.onnx"))
     
@@ -494,14 +539,16 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
-
+    cfg.DATALOADER.NUM_WORKERS = 0
     cfg.DATASETS.TRAIN = ("phone_train",)
     cfg.DATASETS.TEST = ("phone_test",)   # no metrics implemented for this dataset
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
     cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.09
-
+    
+    cfg.MODEL.FINETUNE = True
+    cfg.MODEL.PRUNE = False
     cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:2"
+    cfg.MODEL.DEVICE = "cuda:0"
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25   # 3 classes (data, fig, hazelnut)
     cfg.MODEL.FCOS.NUM_CLASSES = 25     
 
@@ -512,13 +559,14 @@ def setup(args):
         
     if args.channel == 1:
         cfg.INPUT.FORMAT = 'L'
-        cfg.MODEL.PIXEL_MEAN = [90]
-        cfg.MODEL.PIXEL_STD = [77]
+        cfg.MODEL.PIXEL_MEAN = [86]
+        cfg.MODEL.PIXEL_STD = [76]
     else:
         cfg.INPUT.FORMAT = 'BGR'
         cfg.MODEL.PIXEL_MEAN = [57.14, 55.92, 56.19]
         cfg.MODEL.PIXEL_STD = [61.46, 61.27, 61.23]
     cfg.MODEL.BASIS_MODULE.LOSS_ON=False 
+    cfg.MODEL.RESNETS.NORM = 'BN'
     cfg.MODEL.BASIS_MODULE.NORM = 'BN'
     cfg.freeze()
     return cfg
@@ -533,19 +581,19 @@ def main():
     )
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
-    parser.add_argument('--channel', default=3, type=int)
+    parser.add_argument('--channel', default=1, type=int)
     parser.add_argument('--dynamic', default=True, action="store_true")
     parser.add_argument('--ptq', default=True, action="store_true")
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1121.pth",
+        default="/media/ps/data/train/LQ/task/prune/data/Q4/weights_orig/model_0131999-new4.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/model_PTQ",
+        default="/media/ps/data/train/LQ/task/prune/data/Q4/weights_orig/model_ptq",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -561,9 +609,8 @@ def main():
 
     model = build_model(cfg)
 
-    if args.ptq:
-        checkpointer = DetectionCheckpointer(model)
-        _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
+    checkpointer = DetectionCheckpointer(model)
+    _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
     
     model.to(cfg.MODEL.DEVICE)
     model.eval()
@@ -578,22 +625,20 @@ def main():
 
     ignore_policy = ['top_layer']
     # 量化模型
-    
     # for name, layer in model.named_modules():
     #     print(name, layer)
-    cmd_quantize(cfg, args, model, args.output, ignore_policy=ignore_policy, iters=1)
+    # if args.ptq:
+    #     cmd_quantize(cfg, args, model, args.output, ignore_policy=ignore_policy, iters=500)
     
 
     # 敏感层分析
-    # cmd_sensitive_analysis(cfg, model, args.output)
+    cmd_sensitive_analysis(cfg, model, args.output)
 
 
     # print(model)    
     # if not osp.exists(osp.dirname(args.output)):
     #     os.makedirs(osp.dirname(args.output), exist_ok=True)
-    
-
-    
+        
     # export_onnx(cfg, args, model, osp.join(args.output, "static.onnx"))
     
     # # cmd_export(cfg, args, model)

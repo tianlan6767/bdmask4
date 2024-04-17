@@ -122,7 +122,7 @@ def evaluate_coco(model, dataloader, using_cocotools = False, save_dir=".", conf
     
     model = deepcopy(model)
     return val.run(
-        check_dataset("data/coco.yaml"), 
+        check_dataset("/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/ptq-yolo/yolov5/data/coco128.yaml"), 
         save_dir=Path(save_dir),
         dataloader=dataloader, conf_thres=conf_thres,iou_thres=iou_thres,model=model,
         plots=False,save_json=using_cocotools)[0][3]
@@ -174,18 +174,25 @@ def cmd_quantize(weight, cocodir, device, ignore_policy, save_ptq, save_qat, sup
     model   = load_yolov5s_model(weight, device)
     train_dataloader = create_coco_train_dataloader(cocodir)
     val_dataloader   = create_coco_val_dataloader(cocodir)
+    json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
+    ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
+    
+    print("当前验证集:", ap)
+    print("当前未量化前模型:", model)
     quantize.replace_bottleneck_forward(model)
     quantize.replace_to_quantization_module(model, ignore_policy=ignore_policy)
     # quantize.apply_custom_rules_to_quantizer(model, export_onnx)
     # quantize.calibrate_model(model, train_dataloader, device)
 
-    json_save_dir = "." if os.path.dirname(save_ptq) == "" else os.path.dirname(save_ptq)
+
     summary_file = os.path.join(json_save_dir, "summary.json")
     summary = SummaryTool(summary_file)
 
     if eval_origin:
         print("Evaluate Origin...")
         with quantize.disable_quantization(model):
+            print("*****************************************************")
+            print("当前取消量化后模型:", model)
             ap = evaluate_coco(model, val_dataloader, True, json_save_dir)
             summary.append(["Origin", ap])
 
@@ -317,8 +324,8 @@ if __name__ == "__main__":
     qat.add_argument("--qat", type=str, default=None, help="file")
     qat.add_argument("--supervision-stride", type=int, default=1, help="supervision stride")
     qat.add_argument("--iters", type=int, default=200, help="iters per epoch")
-    qat.add_argument("--eval-origin", action="store_true", help="do eval for origin model")
-    qat.add_argument("--eval-ptq", action="store_true", help="do eval for ptq model")
+    qat.add_argument("--eval-origin", default=True, action="store_true", help="do eval for origin model")
+    qat.add_argument("--eval-ptq",default=True, action="store_true", help="do eval for ptq model")
 
     sensitive = subps.add_parser("sensitive", help="Sensitive layer analysis")
     sensitive.add_argument("weight", type=str, nargs="?", default="yolov5s.pt", help="weight file")

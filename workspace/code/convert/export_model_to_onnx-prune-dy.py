@@ -14,57 +14,50 @@ https://github.com/pytorch/pytorch/issues/10446
 https://github.com/pytorch/pytorch/issues/18113
 """
 
-# import os
-# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-
-
 import argparse
 import types
 import torch
 from torch.nn import functional as F
 from copy import deepcopy
+from torchvision.ops import roi_align 
 from onnxsim import simplify
 import onnx
+import math
 import os.path as osp
 import os
+import cv2
 
-import quantization.quantize as quantize
+# multiple versions of Adet/FCOS are installed, remove the conflict ones from the path
 
+import sys
+    
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
 
 from adet.config import get_cfg
 from adet.modeling import FCOS, BlendMask
 
-from detectron2.data import build_detection_test_loader
 
-from detectron2.evaluation import (
-    DatasetEvaluator,
-    inference_on_dataset,
-    print_csv_format,
-    verify_results,
-)
-from detectron2.utils.visualizer import GenericMask
-
-from detectron2.data.datasets import register_coco_instances
-
-train_dataset_name = "phone_train"
-
-jf_train = '/media/ps/data/train/LQ/task/prune/data/Q4/annotations/train.json'
-imgs_train = '/media/ps/data/train/LQ/task/prune/data/Q4/train'
-register_coco_instances(train_dataset_name, {}, jf_train, imgs_train)
-
-def patch_blendmask(model):
+def patch_blendmask(cfg, model, output_names):
     def forward(self, tensor):
         images = None
         gt_instances = None
-        basis_sem = None   
-        features = self.backbone(tensor)    
-        basis_out, _ = self.basis_module(features, basis_sem)
+        basis_sem = None
+
+        features = self.backbone(tensor)
+        basis_out, basis_losses = self.basis_module(features, basis_sem)
         proposals  = self.proposal_generator(images, features, gt_instances, self.top_layer)
         return basis_out["bases"][0], proposals
+        # return proposals
 
     model.forward = types.MethodType(forward, model)
+    # output
+    output_names.extend(["bases"])
+    output_names.extend(["pred"])
+    # for item in ["pred", "mask_logits"]:
+    #     output_names.extend([item])
+
+
 
 def patch_fcos(cfg, proposal_generator):
     def proposal_generator_forward(self, images, features, gt_instances=None, top_module=None):
@@ -74,6 +67,13 @@ def patch_fcos(cfg, proposal_generator):
         return results
 
     proposal_generator.forward = types.MethodType(proposal_generator_forward, proposal_generator)
+
+
+def _fmt_box_list(box_tensor, batch_index: int):
+    repeated_index = torch.full_like(
+        box_tensor[:, :1], batch_index, dtype=box_tensor.dtype, device=box_tensor.device
+    )
+    return torch.cat((repeated_index, box_tensor), dim=1)
 
 
 def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats=None):      
@@ -109,9 +109,7 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, top_feats=None):
     
 
 def forward_for_single_feature_map(cfg, logits_pred, reg_pred,ctrness_pred, top_feat=None):
-    # N, C, H, W = list(map(int, logits_pred.shape))
     N, C, H, W = logits_pred.shape
-
     # put in the same format as locations
     logits_pred = logits_pred.view(-1, C, H, W).permute(0, 2, 3, 1)      # (1,25,256,256) => (1,256,256,25)
     logits_pred = logits_pred.reshape(-1, H*W, C).sigmoid()               # (1,256,256,25) => (1,65536,25)
@@ -177,110 +175,6 @@ def patch_fcos_head(cfg, fcos_head):
 
     fcos_head.forward = types.MethodType(fcos_head_forward, fcos_head)
 
-
-def export_onnx(cfg, args, model : BlendMask, onnx_path):
-    
-    input_names = ["input_image"]
-    input = torch.zeros((1, args.channel, args.height, args.width)).to(cfg.MODEL.DEVICE)
-    output_names = ["bases", "pred"]
-    
-    if isinstance(model, BlendMask):
-        patch_blendmask(model)
-
-    if hasattr(model, 'proposal_generator'):
-        if isinstance(model.proposal_generator, FCOS):
-            patch_fcos(cfg, model.proposal_generator)
-            patch_fcos_head(cfg, model.proposal_generator.fcos_head)
-
-    quantize.export_onnx(
-        model,
-        input,
-        onnx_path,
-        verbose=False,
-        export_params=True,
-        input_names=input_names,
-        output_names=output_names,
-        keep_initializers_as_inputs=False,
-        opset_version=16,
-        dynamic_axes = {
-            "input_image":{2:"h", 3:"w"},
-            "bases":{2: "bases_h", 3:"bases_w"},
-            "pred":{1:"pred_nums"}
-        } if args.dynamic else None
-    )
-    onnx_model = onnx.load(onnx_path)
-    model_simp, check = simplify(onnx_model)
-    assert check,  "Simplified ONNX model could not be validated"
-    onnx.save(model_simp, onnx_path)
-    print("Done. The onnx model is saved into {}.".format(onnx_path))
-
-def cmd_quantize(cfg, args, model, save_dir, eval_origin=False, eval_ptq=False, ignore_policy=None, supervision_stride=1, iters=100):
-    
-    model_name = osp.basename(cfg.MODEL.WEIGHTS).rsplit(".")[0]
-    save_ptq = osp.join(save_dir, model_name + "_ptq.pth")
-
-    save_qat = osp.join(save_dir, model_name + "_qat.pth")
-    if save_ptq and os.path.dirname(save_ptq) != "":
-        os.makedirs(os.path.dirname(save_ptq), exist_ok=True)
-
-    if save_qat and os.path.dirname(save_qat) != "":
-        os.makedirs(os.path.dirname(save_qat), exist_ok=True)
-    
-
-    # 量化初始化
-    quantize.initialize()
-    device  = torch.device(cfg.MODEL.DEVICE)
-
-    #数据集准备
-    train_dataloader = build_detection_test_loader(cfg, train_dataset_name)
-    # val_dataloader   = build_detection_test_loader(cfg, val_dataset_name)
-    
-    quantize.replace_bottleneck_forward(model)
-
-    # 自定义量化层，忽略指定量化层
-    quantize.replace_to_quantization_module(model, ignore_policy)
-
-    # 标定模型
-    quantize.calibrate_model(cfg, model, train_dataloader, device, num_batch=iters)
-    
-    #导出模型
-    export_onnx(cfg, args, model, osp.join(save_dir, f"ptq-{iters}.onnx"))
-
-def setup(args):
-    # train.py -----------------------------------------------------------------------------------------
-    cfg = get_cfg()
-    cfg.merge_from_list(args.opts)
-    config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
-    cfg.merge_from_file(config_file)
-
-    cfg.DATASETS.TRAIN = ("phone_train",)
-    cfg.DATASETS.TEST = ("phone_test",)   # no metrics implemented for this dataset
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
-    cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.09
-
-    cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:2"
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25   # 3 classes (data, fig, hazelnut)
-    cfg.MODEL.FCOS.NUM_CLASSES = 25     
-
-    cfg.MODEL.RESNETS.DEPTH = 34
-    cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
-    cfg.MODEL.BACKBONE.FREEZE_AT = 0
-    cfg.MODEL.FCOS.CENTER_SAMPLE = "center"
-        
-    if args.channel == 1:
-        cfg.INPUT.FORMAT = 'L'
-        cfg.MODEL.PIXEL_MEAN = [90]
-        cfg.MODEL.PIXEL_STD = [77]
-    else:
-        cfg.INPUT.FORMAT = 'BGR'
-        cfg.MODEL.PIXEL_MEAN = [57.14, 55.92, 56.19]
-        cfg.MODEL.PIXEL_STD = [61.46, 61.27, 61.23]
-    cfg.MODEL.BASIS_MODULE.LOSS_ON=False 
-    cfg.MODEL.BASIS_MODULE.NORM = 'BN'
-    cfg.freeze()
-    return cfg
-
 def main():
     parser = argparse.ArgumentParser(description="Export model to the onnx format")
     parser.add_argument(
@@ -292,18 +186,17 @@ def main():
     parser.add_argument('--width', default=2048, type=int)
     parser.add_argument('--height', default=2048, type=int)
     parser.add_argument('--channel', default=1, type=int)
-    parser.add_argument('--dynamic', default=True, action="store_true")
-    parser.add_argument('--ptq', default=True, action="store_true")
+    parser.add_argument('--dynamic', default=False, action="store_true")
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/task/prune/data/Q4/weights_orig/model_0131999-new.pth",
+        default="/media/ps/data/train/LQ/task/prune/data/Q4/weight_prune03/model_0093999.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/model_no",
+        default="/media/ps/data/train/LQ/task/prune/data/Q4/weight_prune03/model_0093999.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -315,24 +208,92 @@ def main():
     )
 
     args = parser.parse_args()
-    cfg = setup(args)
+    # train.py -----------------------------------------------------------------------------------------
+    cfg = get_cfg()
+    cfg.merge_from_list(args.opts)
+    config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
+    cfg.merge_from_file(config_file)
+    cfg.MODEL.WEIGHTS = args.weights
+    cfg.MODEL.DEVICE = "cuda:0"
+    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
+    cfg.MODEL.FCOS.NUM_CLASSES = 25
 
+    cfg.MODEL.RESNETS.DEPTH = 34
+    cfg.MODEL.RESNETS.RES2_OUT_CHANNELS = 64
+    cfg.MODEL.BACKBONE.FREEZE_AT = 0
+        
+    if args.channel == 1:
+        cfg.INPUT.FORMAT = 'L'
+        cfg.MODEL.PIXEL_MEAN = [1]
+        cfg.MODEL.PIXEL_STD = [1]
+    else:
+        cfg.INPUT.FORMAT = 'BGR'
+        cfg.MODEL.PIXEL_MEAN = [1,1,1]
+        cfg.MODEL.PIXEL_STD = [1,1,1]
+
+    cfg.MODEL.FINETUNE = True
+    cfg.MODEL.RESNETS.NORM = 'BN'
+    cfg.MODEL.BASIS_MODULE.NORM = 'BN'
+    cfg.MODEL.BASIS_MODULE.LOSS_ON = False
+    cfg.freeze()
+    # -------------------------------------------------------------------------------------------------------------------------
     model = build_model(cfg)
 
-    checkpointer = DetectionCheckpointer(model)
-    _ = checkpointer.load(cfg.MODEL.WEIGHTS)    
-    
-    model.to(cfg.MODEL.DEVICE)
     model.eval()
+    model.to(cfg.MODEL.DEVICE)
 
-    ignore_policy = ['top_layer']
-    # 量化模型
-    if args.ptq:
-        cmd_quantize(cfg, args, model, args.output, ignore_policy=ignore_policy, iters=1)
+    checkpointer = DetectionCheckpointer(model)
+    _ = checkpointer.load(cfg.MODEL.WEIGHTS)
 
-    #单独导出模型
-    else:
-        export_onnx(cfg, args, model, osp.join(args.output,"fcos.onnx"))
+    height, width = 2048, 2048
+    if args.width > 0:
+        width = args.width
+    if args.height > 0:
+        height = args.height
+    input_names = ["input_image"]
+    
+    dummy_input = torch.zeros((1, args.channel, height, width)).to(cfg.MODEL.DEVICE)
+
+    output_names = []
+    if isinstance(model, BlendMask):
+        patch_blendmask(cfg, model, output_names)
+
+    if hasattr(model, 'proposal_generator'):
+        if isinstance(model.proposal_generator, FCOS):
+            patch_fcos(cfg, model.proposal_generator)
+            patch_fcos_head(cfg, model.proposal_generator.fcos_head)
+            
+    if not osp.exists(osp.dirname(args.output)):
+        os.makedirs(osp.dirname(args.output), exist_ok=True)
+        
+    torch.onnx.export(
+        model,
+        dummy_input,
+        args.output,
+        verbose=False,
+        export_params=True,
+        input_names=input_names,
+        output_names=output_names,
+        keep_initializers_as_inputs=False,
+        opset_version=11,       
+        # dynamic_axes = {
+        #     "input_image":{0:"batch", 2:"h", 3:"w"},
+        #     "bases":{0:"batch", 2:"bases_h", 3:"bases_w"},
+        #     "pred":{0:"batch", 1:"pred_num"}
+        # } if args.dynamic else None
+
+        dynamic_axes = {
+            "input_image":{2:"h", 3:"w"},
+            "bases":{2:"bases_h", 3:"bases_w"},
+            "pred":{1:"pred_num"}
+        } if args.dynamic else None
+    )
+
+    onnx_model = onnx.load(args.output)
+    model_simp, check = simplify(onnx_model)
+    assert check,  "Simplified ONNX model could not be validated"
+    onnx.save(model_simp, args.output)
+    print("Done. The onnx model is saved into {}.".format(args.output))
     
 if __name__ == "__main__":
     main()

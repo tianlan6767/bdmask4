@@ -16,11 +16,11 @@ def init(key, iv):
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25
     cfg.MODEL.FCOS.NUM_CLASSES = 25
     
-    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/prune/weights-allbn-orig/model_0022999.pth"
+    cfg.MODEL.WEIGHTS = r"/media/ps/data/train/LQ/task/prune/data/Q4/weights_orig/model_0131999.pth"
     
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.1
     cfg.MODEL.FCOS.INFERENCE_TH_TEST = 0.16
-    cfg.MODEL.DEVICE = "cuda:0"
+    cfg.MODEL.DEVICE = "cuda:2"
     cfg.MODEL.KEY = key
     cfg.MODEL.IV =  iv
     
@@ -30,15 +30,15 @@ def init(key, iv):
     cfg.MODEL.BACKBONE.FREEZE_AT = 0
     cfg.MODEL.PRUNE = True
     cfg.MODEL.FCOS.CENTER_SAMPLE = "center"
-    cfg.MODEL.BASIS_MODULE.LOSS_ON=False
+    # cfg.MODEL.BASIS_MODULE.LOSS_ON=False
 
-    # cfg.INPUT.FORMAT = 'L'
-    # cfg.MODEL.PIXEL_MEAN = [86]
-    # cfg.MODEL.PIXEL_STD = [76]
+    cfg.INPUT.FORMAT = 'L'
+    cfg.MODEL.PIXEL_MEAN = [86]
+    cfg.MODEL.PIXEL_STD = [76]
 
-    cfg.INPUT.FORMAT = 'BGR'
-    cfg.MODEL.PIXEL_MEAN = [40,40,40]
-    cfg.MODEL.PIXEL_STD = [40,40,40]
+    # cfg.INPUT.FORMAT = 'BGR'
+    # cfg.MODEL.PIXEL_MEAN = [40,40,40]
+    # cfg.MODEL.PIXEL_STD = [40,40,40]
     
     global predictor
     predictor = DefaultPredictor(cfg)
@@ -69,7 +69,7 @@ def tp_prune(model, input, prune_model_file, save_model=False):
         importance=imp,  # 重要性评估指标
         iterative_steps=iterative_steps,  # 迭代剪枝，设为1则一次性完成剪枝
         global_pruning=True,
-        pruning_ratio=0.5,
+        pruning_ratio=0.4,
         ignored_layers=ignored_layers,  
         unwrapped_parameters=unwrapped_parameters
     )
@@ -92,9 +92,9 @@ def tp_prune(model, input, prune_model_file, save_model=False):
 
 if __name__ == "__main__":
     cfg = init("8Xe0efbbhSPHmaw0", "OwXaWuIhMzErsKl5")
-    prune_model_file = r"/media/ps/data/train/LQ/task/prune/prune_tptmp.pth"
+    prune_model_file = r"/media/ps/data/train/LQ/task/prune/data/Q4/prune_tptmp-04.pth"
     model = predictor.model.eval()
-    image = torch.rand(3, 2048, 2048)
+    image = torch.rand(1, 2048, 2048)
     # tp 剪枝
     tp_prune(model, image, prune_model_file, save_model=True)
 

@@ -4,22 +4,34 @@ export LD_LIBRARY_PATH=/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages
 # 转换fcos分支
 
 cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/bin
-# ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-batch10.onnx \
-#           --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JT/model-1016-batch10 \
-#           --minShapes=input_image:1x3x2048x2048 \
-#           --optShapes=input_image:10x3x4096x4096  \
-#           --maxShapes=input_image:10x3x4096x5472 \
+./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/tmp/imgs2/model_1573999.onnx \
+          --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/tmp/imgs2/model_1573999.trtmodel \
+          --minShapes=input_image:1x3x2048x2048 \
+          --optShapes=input_image:1x3x4096x4096 \
+          --maxShapes=input_image:1x3x4096x4096 \
+          --fp16 \
+          --device=2 \
+          --workspace=10240 \
+          --preview=+fasterDynamicShapes0805
+          
+
+
+# ./trtexec --onnx=/media/ps/data/train/LQ/task/prune/data/Q4/weight_prune03/model_0093999.onnx\
+#           --saveEngine=/media/ps/data/train/LQ/task/prune/data/Q4/weight_prune03/model_0093999.trtmodel \
 #           --fp16 \
-#           --device=3 \
+#           --device=0 \
 #           --workspace=10240 \
 #           --preview=+fasterDynamicShapes0805
 
 
 
-# ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model_0413999-orig.onnx \
-#           --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model3/ptq-all-trainall_hasrule-all-basicblock100 \
+# ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/ll/JR_S8_0322.onnx \
+#           --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/ll/JR_S8_0322.onnx \
+#           --minShapes=input_image:1x1x2048x2048 \
+#           --optShapes=input_image:1x1x2048x2048  \
+#           --maxShapes=input_image:1x1x2048x2048 \
 #           --fp16 --int8 \
-#           --device=0 \
+#           --device=1 \
 #           --workspace=10240 \
 #           --exportLayerInfo=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/OQC/model3/ptq-all-trainall_hasrule-all-basicblock100-layer.json \
 #           --profilingVerbosity=detailed  \

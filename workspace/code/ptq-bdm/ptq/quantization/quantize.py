@@ -200,10 +200,12 @@ def bottleneck_quant_forward(self, x):
 
 def basicblock_quant_forward(self, x):
     out = self.conv1(x)
+    out = self.norm1(out)
     out = F.relu_(out)
     out = self.conv2(out)
+    out = self.norm2(out)
     if self.shortcut is not None:
-        shortcut = self.shortcut(x)
+        shortcut = self.norm3(self.shortcut(x))
     else:
         shortcut = x
     if hasattr(self, "addop"):
