@@ -14,45 +14,6 @@ namespace Fcos{
     using namespace cv;
     using namespace std;
 
-
-    InstanceSegmentMap::InstanceSegmentMap(int width, int height) {
-        this->width = width;
-        this->height = height;
-        checkCudaRuntime(cudaMallocHost(&this->data, width * height));
-    }
-
-    InstanceSegmentMap::~InstanceSegmentMap() {
-        if (this->data) {
-            checkCudaRuntime(cudaFreeHost(this->data));
-            this->data = nullptr;
-        }
-        this->width = 0;
-        this->height = 0;
-    }
-
-    // struct AffineMatrix{
-    //     float i2d[6];       // image to dst(network), 2x3 matrix
-    //     float d2i[6];       // dst to image, 2x3 matrix
-
-    //     void compute(const cv::Size& from, const cv::Size& to){
-    //         float scale_x = to.width / (float)from.width;
-    //         float scale_y = to.height / (float)from.height;
-    //         float scale = std::min(scale_x, scale_y);
-
-    //         i2d[0] = scale;  i2d[1] = 0;  i2d[2] = -scale * from.width  * 0.5  + to.width * 0.5 + scale * 0.5 - 0.5;
-    //         i2d[3] = 0;  i2d[4] = scale;  i2d[5] = -scale * from.height * 0.5 + to.height * 0.5 + scale * 0.5 - 0.5;
-
-    //         // 有了i2d矩阵，我们求其逆矩阵，即可得到d2i（用以解码时还原到原始图像分辨率上）
-    //         cv::Mat m2x3_i2d(2, 3, CV_32F, i2d);
-    //         cv::Mat m2x3_d2i(2, 3, CV_32F, d2i);
-    //         cv::invertAffineTransform(m2x3_i2d, m2x3_d2i);
-    //     }
-
-    //     cv::Mat i2d_mat(){
-    //         return cv::Mat(2, 3, CV_32F, i2d);
-    //     }
-    // };
-
     struct AffineMatrix{
         float i2d[6];       // image to dst(network), 2x3 matrix
         float d2i[6];       // dst to image, 2x3 matrix
@@ -115,7 +76,7 @@ namespace Fcos{
     using ControllerImpl = InferController
     <
         Mat,                    // input
-        BoxArray,              // output
+        BoxArray,               // output
         tuple<string, int>,     // start param
         AffineMatrix            // additional
     >;
@@ -263,9 +224,11 @@ namespace Fcos{
                             pbox[2] = max(0.f, min(float(input_width_), pbox[2]));
                             pbox[1] = max(0.f, min(float(input_height_), pbox[1]));
                             pbox[3] = max(0.f, min(float(input_height_), pbox[3]));
-                            Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], pbox[5]);
                             int box_mask_height = pbox[3] - pbox[1] + 0.5f;
                             int box_mask_width  = pbox[2] - pbox[0] + 0.5f;
+                            box_mask_height = max(1.0f, float(box_mask_height));
+                            box_mask_width = max(1.0f, float(box_mask_width));
+                            Box result_object_box(pbox[0], pbox[1], pbox[0]+float(box_mask_width), pbox[1]+float(box_mask_height), pbox[4], pbox[5]);
                             box_grid_device.resize(1, box_mask_height, box_mask_width, 2);
                             box_mask_device.resize(box_mask_height, box_mask_width);
                             float* box_tensor = box_device.gpu<float>();

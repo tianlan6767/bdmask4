@@ -23,6 +23,10 @@
 *.bmp
 *.pyc
 *.json
+*.pth
+*.onnx
+*.trtmodel
+*.pt
 
 
 # Logs and databases #
@@ -53,3 +57,4 @@ workspace/eval/
 workspace/models/
 workspace/code/ptq-bdm/data/data2/
 workspace/code/ptq-bdm/tmp.py
+build/*

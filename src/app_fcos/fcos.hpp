@@ -6,43 +6,18 @@
 #include <string>
 #include <future>
 #include <opencv2/opencv.hpp>
+#include <common/result_detector.hpp>
 
 namespace Fcos
 {
 
     using namespace std;
+    using namespace ResultDetector;
 
     enum class NMSMethod : int{
         CPU = 0,         // General, for estimate mAP
         FastGPU = 1      // Fast NMS with a small loss of accuracy in corner cases
     };
-
-    
-    struct InstanceSegmentMap {
-        int width = 0, height = 0;      // width % 8 == 0
-        unsigned char *data = nullptr;  // is width * height memory
-
-        InstanceSegmentMap(int width, int height);
-        virtual ~InstanceSegmentMap();
-    };
-
-    struct Box {
-    float left, top, right, bottom, confidence;
-    int class_label;
-    std::shared_ptr<InstanceSegmentMap> seg;  // valid only in segment task
-
-    Box() = default;
-    Box(float left, float top, float right, float bottom, float confidence, int class_label)
-        : left(left),
-            top(top),
-            right(right),
-            bottom(bottom),
-            confidence(confidence),
-            class_label(class_label) {}
-    };
-
-    typedef std::vector<Box> BoxArray;
-
 
     class Infer
     {
