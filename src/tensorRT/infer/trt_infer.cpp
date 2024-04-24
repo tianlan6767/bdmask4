@@ -281,7 +281,18 @@ namespace TRT {
             else if(strcmp(bindingName,"pred") == 0){
                 dims.d[1] = 341;
             }
-
+			else if(strcmp(bindingName, "images") == 0){
+				dims.d[2] = 1024;
+				dims.d[3] = 1024;
+			}
+			else if(strcmp(bindingName, "output0") == 0){
+				dims.d[1] = 21504;
+				dims.d[2] = 116;
+			}
+			else if(strcmp(bindingName, "output1") == 0){
+				dims.d[2] = 256;
+				dims.d[3] = 256;
+			}
 			auto newTensor = make_shared<Tensor>(dims.nbDims, dims.d, convert_trt_datatype(type));
 			newTensor->set_stream(this->context_->stream_);
 			newTensor->set_workspace(this->workspace_);

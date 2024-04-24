@@ -15,6 +15,20 @@ namespace YoloSeg{
     using namespace cv;
     using namespace std;
 
+
+    int calculate(int h, int w){
+        int array[] = {8, 16, 32, 64, 128};
+        int result = 0;
+        auto feature_num = [&](int value) {
+            
+            return static_cast<int>(std::ceil(static_cast<double>(h) / value) * std::ceil(static_cast<double>(w) / value));
+        };
+        for(int i=0;i < sizeof(array)/ sizeof(array[0]); i++){
+            result += feature_num(array[i]);
+        }
+        return result;
+    }
+
     void affine_project(float* matrix, float x, float y, float* ox, float* oy);
 
     void decode_kernel_invoker(
@@ -179,6 +193,15 @@ namespace YoloSeg{
 
                 int infer_batch_size = fetch_jobs.size();
                 input->resize_single_dim(0, infer_batch_size);
+                input->resize_single_dim(2, input_height_);
+                input->resize_single_dim(3, input_width_);
+
+                mask_head_output->resize_single_dim(0, infer_batch_size);
+                mask_head_output->resize_single_dim(2, int(input_height_/4));
+                mask_head_output->resize_single_dim(3, int(input_width_/4));
+
+                bbox_head_output->resize_single_dim(0, infer_batch_size);
+                bbox_head_output->resize_single_dim(1,calculate(input_height_, input_width_));
 
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     auto& job  = fetch_jobs[ibatch];
@@ -273,7 +296,7 @@ namespace YoloSeg{
         }
 
         virtual bool preprocess(Job& job, const Mat& image) override{
-
+            int channel = image.channels();
             if(tensor_allocator_ == nullptr){
                 INFOE("tensor_allocator_ is nullptr");
                 return false;
@@ -309,16 +332,22 @@ namespace YoloSeg{
 
                     // owner = false, tensor ignored the stream
                     tensor->set_stream(preprocess_stream, false);
+                    
                 }
             }
 
-            Size input_size(input_width_, input_height_);
-            job.additional.compute(image.size(), input_size);
-            
-            preprocess_stream = tensor->get_stream();
-            tensor->resize(1, 3, input_height_, input_width_);
+            input_width_ = iLogger::upbound(image.cols, 32);
+            input_height_ = iLogger::upbound(image.rows, 32);
+            // tensor->resize(1, channel, input_height_, input_width_);
+            cv::Size image_size = image.size();
 
-            size_t size_image      = image.cols * image.rows * 3;
+            Size input_size(input_width_, input_height_);
+            job.additional.compute(image_size, input_size);
+            preprocess_stream = tensor->get_stream();
+            tensor->resize(1, channel, input_height_, input_width_);
+
+            size_t size_image      = input_width_ * input_height_ * channel;
+            size_t size_image_old  = image_size.width * image_size.height * channel;
             size_t size_matrix     = iLogger::upbound(sizeof(job.additional.d2i), 32);
             auto workspace         = tensor->get_workspace();
             uint8_t* gpu_workspace        = (uint8_t*)workspace->gpu(size_matrix + size_image);
@@ -331,13 +360,13 @@ namespace YoloSeg{
 
             //checkCudaRuntime(cudaMemcpyAsync(image_host,   image.data, size_image, cudaMemcpyHostToHost,   stream_));
             // speed up
-            memcpy(image_host, image.data, size_image);
+            memcpy(image_host, image.data, size_image_old);
             memcpy(affine_matrix_host, job.additional.d2i, sizeof(job.additional.d2i));
             checkCudaRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, preprocess_stream));
             checkCudaRuntime(cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(job.additional.d2i), cudaMemcpyHostToDevice, preprocess_stream));
 
             CUDAKernel::warp_affine_bilinear_and_normalize_plane(
-                image_device,         image.cols * 3,       image.cols,       image.rows, 
+                image_device,         image.cols * channel,       image.cols,       image.rows, 
                 tensor->gpu<float>(), input_width_,         input_height_, 
                 affine_matrix_device, 114, 
                 normalize_, preprocess_stream
