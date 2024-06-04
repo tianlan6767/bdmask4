@@ -343,8 +343,6 @@ namespace Fcos{
 
         virtual std::shared_future<BoxArray> commit(const Mat& image) override{
             return ControllerImpl::commit(image);
-        
-
         }
 
     private:
