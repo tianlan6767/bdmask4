@@ -6,6 +6,7 @@
 #include <opencv2/opencv.hpp>
 #include "app_fcos/fcos.hpp"
 #include "app_yolo_seg/yolo_seg.hpp"
+#include "app_anomalib/efficientad.hpp"
 
 template<typename InferType, typename BoxArrayType>
 class InferApp {
@@ -25,6 +26,12 @@ bool InferApp<InferType, BoxArrayType>::init(std::shared_ptr<void>& infer, const
         std::shared_ptr<YoloSeg::Infer> yoloSegInfer = YoloSeg::create_infer(engine_path, device_id, 0.25);
         infer = std::static_pointer_cast<void>(yoloSegInfer);
     }
+
+    else if (methodStr == "efficientad") {
+        std::shared_ptr<EfficientAd::Infer> efficientadInfer = EfficientAd::create_infer(engine_path, device_id, 100.0f);
+        infer = std::static_pointer_cast<void>(efficientadInfer);
+    }
+
 
     if (infer != nullptr) {
         return true;

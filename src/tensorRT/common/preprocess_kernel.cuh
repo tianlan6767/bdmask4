@@ -67,6 +67,10 @@ namespace CUDAKernel{
         const uint8_t* y, const uint8_t* uv, int width, int height, 
         int linesize, uint8_t* dst, 
         cudaStream_t stream);
+
+    void warp_affine_bilinear_mask(
+		uint8_t* src, int src_line_size, int src_width, int src_height, uint8_t* dst, int dst_width, int dst_height, float* matrix_2_3, uint8_t const_value_st,
+		cudaStream_t stream);
 };
 
 #endif // PREPROCESS_KERNEL_CUH

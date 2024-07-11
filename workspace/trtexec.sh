@@ -4,15 +4,15 @@ export LD_LIBRARY_PATH=/home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages
 # 转换fcos分支
 
 cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115cudnn8/bin
-./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/tmp/imgs2/model_1573999.onnx \
-          --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/tmp/imgs2/model_1573999.trtmodel \
-          --minShapes=input_image:1x3x2048x2048 \
-          --optShapes=input_image:1x3x4096x4096 \
-          --maxShapes=input_image:1x3x4096x4096 \
-          --fp16 \
-          --device=2 \
-          --workspace=10240 \
-          --preview=+fasterDynamicShapes0805
+# ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/tmp/imgs2/model_1573999.onnx \
+#           --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/tmp/imgs2/model_1573999.trtmodel \
+#           --minShapes=input_image:1x3x1024x1024 \
+#           --optShapes=input_image:1x3x4096x4096 \
+#           --maxShapes=input_image:1x3x4096x4096 \
+#           --fp16 \
+#           --device=0 \
+#           --workspace=10240 \
+#           --preview=+fasterDynamicShapes0805
           
 
 
@@ -48,10 +48,11 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 #           --device=3 \
 #           --workspace=4096
 
-# ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/model_0413999-orig.onnx \
-#           --saveEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/model_0413999-orig-fp32 \
-#           --device=3 \
-#           --workspace=10240
+./trtexec --onnx=/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/ead/new/export/model_simple.onnx \
+          --saveEngine=/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/ead/new/export/model_simple.trtmodel \
+          --device=3 \
+          --fp16 \
+          --workspace=10240
 
 # 转换ptq模型
 # ./trtexec --onnx=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/code/trt/model/ptq.onnx \
@@ -65,5 +66,5 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 
 
 # ./trtexec --loadEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy-b5-5472 --shapes=input_image:1x3x4096x4096
-# ./trtexec --loadEngine=/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy-2048-b20 --shapes=input_image:20x3x2048x2048 --device=2
+# ./trtexec --loadEngine=/media/ps/data1/train/LQ/task/anomalib/datasets/pad/ct_splice2/run/export/model_simple.trtmodel --shapes=input_image:20x3x2048x2048 --device=2
 # ./trtexec --loadEngine=/media/ps/data/train/LQ/task/bdm/infer/infer/workspace/yolov8n-seg.b1.transd-fp16.engine --shapes=images:1x3x640x640

@@ -330,6 +330,7 @@ namespace Fcos{
                 normalize_, stream_
             );
 
+            
             // 将图片粘贴在左上角
             // CUDAKernel::resize_and_norm_plane(
             //     image_device, image.cols, image.rows, tensor->gpu<float>(), input_width_, input_height_, channel, normalize_, stream_   
