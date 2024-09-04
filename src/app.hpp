@@ -7,16 +7,17 @@
 #include "app_fcos/fcos.hpp"
 #include "app_yolo_seg/yolo_seg.hpp"
 #include "app_anomalib/efficientad.hpp"
+#include "app_cfaAd/cfaAd.hpp"
 
 template<typename InferType, typename BoxArrayType>
 class InferApp {
 public:
-    bool init(std::shared_ptr<void>& infer, const std::string& engine_path, float* mean, float* std, int device_id = 0, const char* method = "");
+    bool init(std::shared_ptr<void>& infer, const std::string& engine_path, ResultDetector::SpliceInfoArray &spliceInfoArray, float* mean, float* std, int device_id = 0, const char* method = "");
     BoxArrayType app(std::shared_ptr<void> infer, cv::Mat& image);
 };
 
 template<typename InferType, typename BoxArrayType>
-bool InferApp<InferType, BoxArrayType>::init(std::shared_ptr<void>& infer, const std::string& engine_path, float* mean, float* std, int device_id, const char* method) {
+bool InferApp<InferType, BoxArrayType>::init(std::shared_ptr<void>& infer, const std::string& engine_path, ResultDetector::SpliceInfoArray &spliceInfoArray, float* mean, float* std, int device_id, const char* method) {
     std::string methodStr(method); // 将C风格字符串转换为std::string
     if (methodStr == "blendmask") {
         std::shared_ptr<Fcos::Infer> fcosInfer = Fcos::create_infer(engine_path, device_id, 0.09, mean, std);
@@ -28,8 +29,13 @@ bool InferApp<InferType, BoxArrayType>::init(std::shared_ptr<void>& infer, const
     }
 
     else if (methodStr == "efficientad") {
-        std::shared_ptr<EfficientAd::Infer> efficientadInfer = EfficientAd::create_infer(engine_path, device_id, 100.0f);
+        std::shared_ptr<EfficientAd::Infer> efficientadInfer = EfficientAd::create_infer(engine_path, spliceInfoArray, device_id, 20.0f);
         infer = std::static_pointer_cast<void>(efficientadInfer);
+    }
+
+    else if (methodStr == "cfaAd") {
+        std::shared_ptr<CfaAd::Infer> CfaAdInfer = CfaAd::create_infer(engine_path, spliceInfoArray, device_id, 0.5f, mean, std);
+        infer = std::static_pointer_cast<void>(CfaAdInfer);
     }
 
 

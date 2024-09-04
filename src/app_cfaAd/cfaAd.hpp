@@ -1,5 +1,5 @@
-#ifndef EFFICIENTAD_HPP
-#define EFFICIENTAD_HPP
+#ifndef CFAAD_HPP
+#define CFAAD_HPP
 
 #include <vector>
 #include <memory>
@@ -8,9 +8,12 @@
 #include <opencv2/opencv.hpp>
 #include <common/result_detector.hpp>
 
-namespace EfficientAd
-{
 
+namespace CfaAd
+{
+    
+    #define KERNEL_SIZE 33
+    #define SIGMA 4.0f
     using namespace std;
     using namespace ResultDetector;
 
@@ -26,8 +29,8 @@ namespace EfficientAd
         virtual vector<shared_future<BoxArray>> commits(const vector<cv::Mat> &images) = 0;
     };
 
-    shared_ptr<Infer> create_infer(const string &engine_file, SpliceInfoArray &spliceInfoArray, int gpuid = 0, float confidence_threshold = 0.5f);
+    shared_ptr<Infer> create_infer(const string &engine_file, SpliceInfoArray &spliceInfoArray, int gpuid = 0, float confidence_threshold = 0.5f,float mean[3]= {0,}, float std[3]={0,});
 
-}; // namespace EfficientAd
+}; // namespace CfaAd
 
-#endif // EFFICIENTAD_HPP
+#endif // CFAAD_HPP

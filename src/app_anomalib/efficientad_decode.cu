@@ -10,7 +10,8 @@ namespace EfficientAd{
         uint8_t* pout_item = parray + position;
         float pout_item_value =  (*pitem < 0.0f) ? 0.0f : ((*pitem > 1.0f) ? 1.0f : *pitem);  
         float pout_value = floorf(pout_item_value * 255.0f + 0.5f);
-        *pout_item = (pout_value > confidence_threshold) ? 255 : 0;
+        *pout_item = (pout_value > confidence_threshold) ? pout_value : 0;
+        // *pout_item = (pout_value > confidence_threshold) ? 255 : 0;
     }
 
     void decode_kernel_invoker(float* predict, int dst_height, int dst_width, float confidence_threshold, uint8_t* parray, cudaStream_t stream){
