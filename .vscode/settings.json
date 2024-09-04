@@ -85,7 +85,8 @@
         "shared_mutex": "cpp",
         "valarray": "cpp",
         "__atomic": "cpp",
-        "any": "cpp"
+        "any": "cpp",
+        "*.inc": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabled",
     "python.analysis.typeCheckingMode": "basic"
