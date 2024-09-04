@@ -50,6 +50,7 @@ def patch_blendmask(cfg, model, output_names):
         basis_sem = None
 
         features = self.backbone(tensor)
+        # print(features)
         basis_out, basis_losses = self.basis_module(features, basis_sem)
         proposals  = self.proposal_generator(images, features, gt_instances, self.top_layer)
         
@@ -99,7 +100,8 @@ def patch_fcos(cfg, proposal_generator):
     def proposal_generator_forward(self, images, features, gt_instances=None, top_module=None):
         # print("当前使用",features.keys(), "\n")
         features = [features[f] for f in self.in_features]
-        # print("当前使用********* :",self.in_features, len(features), "\n")
+        # features_shapes = [features[i].shape for i in range(len(features))]
+        # print("当前使用********* :",features_shapes, len(features), "\n")
         locations = self.compute_locations(features)
         logits_pred, reg_pred, ctrness_pred, top_feats, bbox_towers = self.fcos_head(features, top_module, self.yield_proposal)
         results = predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_feats)
@@ -160,7 +162,7 @@ def predict_proposals(cfg, logits_pred, reg_pred, ctrness_pred, locations, top_f
     # batch_index = torch.zeros((1, detections.shape[0], 1), dtype=detections.dtype, device=detections.device)
     # pred = torch.cat([batch_index, detections[None], merge_logits_pred_max, merge_logits_pred], 2)
     pred = torch.cat([detections[None], merge_logits_pred_max, merge_logits_pred, merge_top_feat], 2)
-    
+    print("******************",pred.shape)
     return pred
     
 
@@ -249,20 +251,20 @@ def main():
         metavar="FILE",
         help="path to config file",
     )
-    parser.add_argument('--width', default=2048, type=int)
-    parser.add_argument('--height', default=2048, type=int)
+    parser.add_argument('--width', default=1952, type=int)
+    parser.add_argument('--height', default=2592, type=int)
     parser.add_argument('--channel', default=3, type=int)
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826.pth",
+        default="/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/tmp/model_0122499.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/LQ/bdms/bdmask/workspace/models/JT/model_0826-dd.onnx",
+        default="/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/tmp/model_0826-dd.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -280,7 +282,7 @@ def main():
     config_file = '/home/ps/adet/AdelaiDet/configs/BlendMask/R_50_3x.yaml'
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = args.weights
-    cfg.MODEL.DEVICE = "cuda:0"
+    cfg.MODEL.DEVICE = "cuda:1"
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 25  # 3 classes (data, fig, hazelnut)
     cfg.MODEL.FCOS.NUM_CLASSES = 25
 

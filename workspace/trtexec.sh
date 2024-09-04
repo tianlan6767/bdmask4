@@ -48,9 +48,9 @@ cd /home/ps/anaconda3/envs/py-38/lib/python3.8/site-packages/trtpy/trt852cuda115
 #           --device=3 \
 #           --workspace=4096
 
-./trtexec --onnx=/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/ead/new/export/model_simple.onnx \
-          --saveEngine=/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/ead/new/export/model_simple.trtmodel \
-          --device=3 \
+./trtexec --onnx=/media/ps/data1/train/LQ/task/anomalib/datasets/fsk_pad/splice0827/run/S-512-alltransform_add300/loss1.0787_auroc0.0000_qab0.0800-export-S-S-512-alltransform_add300-0.1-thres30/model_simple.onnx \
+          --saveEngine=/media/ps/data1/train/LQ/task/anomalib/datasets/fsk_pad/splice0827/run/S-512-alltransform_add300/loss1.0787_auroc0.0000_qab0.0800-export-S-S-512-alltransform_add300-0.1-thres30/model_simple.trtmodel \
+          --device=0 \
           --fp16 \
           --workspace=10240
 

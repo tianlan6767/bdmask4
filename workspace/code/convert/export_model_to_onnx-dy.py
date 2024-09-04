@@ -190,13 +190,13 @@ def main():
     
     parser.add_argument(
         "--weights",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124.pth",
+        default="/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124.pth",
         metavar="FILE",
         help="path to the output onnx file",
     )
     parser.add_argument(
         "--output",
-        default="/media/ps/data/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy.onnx",
+        default="/media/ps/data1/train/LQ/task/bdm/bdmask/workspace/models/JR/JR_1124-dy.onnx",
         metavar="FILE",
         help="path to the output onnx file",
     )
@@ -262,6 +262,11 @@ def main():
             
     if not osp.exists(osp.dirname(args.output)):
         os.makedirs(osp.dirname(args.output), exist_ok=True)
+        
+        
+        
+    output = model(dummy_input)
+    print(output)
         
     torch.onnx.export(
         model,
