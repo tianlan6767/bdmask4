@@ -244,7 +244,7 @@ namespace YoloSeg{
                         int keepflag = pbox[6];
                         if(keepflag == 1){
 
-                            Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], pbox[5]);
+                            Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], pbox[5], 0, 0);
                             // process mask
                             // reference: https://github.com/shouxieai/infer/blob/main/src/yolo.cu#L629
                             int row_index = pbox[7];

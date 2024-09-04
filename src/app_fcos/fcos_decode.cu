@@ -1,9 +1,6 @@
 #include <common/cuda_tools.hpp>
 
 namespace Fcos{
-
-
-
     const int NUM_BOX_ELEMENT = 792;      // left, top, right, bottom, confidence, class, keepflag, box_index
     __device__ const int FEATURE_STRIDES[] = {8, 16, 32, 64, 128};
     static __device__ void affine_project(float* matrix, float x, float y, float* ox, float* oy){
@@ -278,20 +275,22 @@ namespace Fcos{
         int roi_batch_ind = offset_bottom_rois[0];
 
         // Do not use rounding; this implementation detail is critical
+        // (800, 1200, 880, 1240) ----> (200-0.5, 300-0.5, 220-0.5, 310-0.5)
         float offset = aligned ? (float)0.5 : (float)0.0;
+        printf("当前点位：%f-%f-%f-%f", offset_bottom_rois[1], offset_bottom_rois[2], offset_bottom_rois[3], offset_bottom_rois[4]);
         float roi_start_w = offset_bottom_rois[1] * spatial_scale - offset;
         float roi_start_h = offset_bottom_rois[2] * spatial_scale - offset;
         float roi_end_w = offset_bottom_rois[3] * spatial_scale - offset;
         float roi_end_h = offset_bottom_rois[4] * spatial_scale - offset;
-
-        float roi_width = roi_end_w - roi_start_w;
-        float roi_height = roi_end_h - roi_start_h;
+       
+        float roi_width = roi_end_w - roi_start_w; // 20
+        float roi_height = roi_end_h - roi_start_h; // 10
         if (!aligned) { // for backward-compatibility only
         roi_width = max(roi_width, (float)1.);
         roi_height = max(roi_height, (float)1.);
         }
-        float bin_size_h = static_cast<float>(roi_height) / static_cast<float>(pooled_height);
-        float bin_size_w = static_cast<float>(roi_width) / static_cast<float>(pooled_width);
+        float bin_size_h = static_cast<float>(roi_height) / static_cast<float>(pooled_height); //0.3571
+        float bin_size_w = static_cast<float>(roi_width) / static_cast<float>(pooled_width);   // 0.1785
 
         const float* offset_bottom_data =
             bottom_data + (roi_batch_ind * channels + c) * height * width;
@@ -317,7 +316,7 @@ namespace Fcos{
             const float x = roi_start_w + pw * bin_size_w +
                 static_cast<float>(ix + .5f) * bin_size_w /
                     static_cast<float>(roi_bin_grid_w);
-            // printf("%f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n", roi_height, roi_width, roi_start_h, roi_start_w, roi_bin_grid_h, roi_bin_grid_w, bin_size_h, bin_size_w, x, y);
+            // printf("%f, %f, %f, %f, %d, %d, %f, %f, %f, %f\n", roi_height, roi_width, roi_start_h, roi_start_w, roi_bin_grid_h, roi_bin_grid_w, bin_size_h, bin_size_w, x, y);
             float val = bilinear_interpolate(
                 offset_bottom_data, height, width, y, x, index);
             output_val += val;

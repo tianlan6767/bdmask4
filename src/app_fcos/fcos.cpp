@@ -211,7 +211,6 @@ namespace Fcos{
                 for(int ibatch = 0; ibatch < infer_batch_size; ++ibatch){
                     float* parray = output_array_device.cpu<float>(ibatch);
                     int count     = min(MAX_IMAGE_BBOX, (int)*parray);
-                    
                     float* base_tensor = bases_out->gpu<float>(ibatch);
 
                     auto& job     = fetch_jobs[ibatch];
@@ -228,7 +227,7 @@ namespace Fcos{
                             int box_mask_width  = pbox[2] - pbox[0] + 0.5f;
                             box_mask_height = max(1.0f, float(box_mask_height));
                             box_mask_width = max(1.0f, float(box_mask_width));
-                            Box result_object_box(pbox[0], pbox[1], pbox[0]+float(box_mask_width), pbox[1]+float(box_mask_height), pbox[4], pbox[5]);
+                            Box result_object_box(pbox[0], pbox[1], pbox[0]+float(box_mask_width), pbox[1]+float(box_mask_height), pbox[4], pbox[5], 0, 0);
                             box_grid_device.resize(1, box_mask_height, box_mask_width, 2);
                             box_mask_device.resize(box_mask_height, box_mask_width);
                             float* box_tensor = box_device.gpu<float>();
